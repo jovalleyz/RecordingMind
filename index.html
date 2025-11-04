@@ -47,7 +47,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Manifiesto de la PWA (enlazado a archivo externo) -->
-    <!-- <link rel="manifest" href="manifest.json"> --> <!-- Deshabilitado temporalmente para evitar errores en el preview -->
+    <link rel="manifest" href="manifest.json">
     
     <!-- Estilos Globales y Animaciones -->
     <style>
@@ -150,17 +150,6 @@
                 <div class="space-y-4">
                     <ul id="history-list" class="space-y-4">
                         <!-- Plantilla de reunión (se llena con JS) -->
-                        <!-- 
-                        <li class="bg-gray-800 p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-700 transition-colors" data-meeting-id="1">
-                            <h3 class="font-semibold text-white text-lg">Reunión de Sincronización Semanal</h3>
-                            <p class="text-sm text-gray-400">1 de Nov, 2025 - 00:45:12</p>
-                            <div class="flex flex-wrap gap-2 mt-2">
-                                <span class="text-xs bg-brand-dark text-brand-light px-2 py-0.5 rounded-full">Q4</span>
-                                <span class="text-xs bg-brand-dark text-brand-light px-2 py-0.5 rounded-full">Marketing</span>
-                            </div>
-                            <span class="mt-2 text-xs font-medium text-green-400 bg-green-900/50 px-2 py-1 rounded-full inline-block">Resumido</span>
-                        </li>
-                        -->
                     </ul>
                     <p id="history-empty-state" class="text-center text-gray-500 py-10 hidden">No tienes grabaciones.<br>Inicia una en la pestaña "Grabar".</p>
                 </div>
@@ -195,11 +184,6 @@
                     <p class="text-gray-500" id="tasks-empty-state">No hay tareas pendientes.</p>
                     <ul id="tasks-list" class="space-y-3">
                         <!-- Plantilla de tarea -->
-                        <!--
-                        <li class="text-sm">
-                            <span class="font-medium text-white">Definir presupuesto Q1</span> - <span class="text-gray-400">Juan Pérez (2025-11-10)</span>
-                        </li>
-                        -->
                     </ul>
                 </div>
             </div>
@@ -322,19 +306,6 @@
                         <div id="actions-content" class="hidden">
                             <ul id="summary-actionplan" class="space-y-3">
                                 <!-- Plantilla Tarea -->
-                                <!--
-                                <li class="bg-gray-800 p-3 rounded-lg">
-                                    <p class="font-medium text-white">Definir estrategia de lanzamiento</p>
-                                    <div class="flex justify-between items-center mt-1 text-sm">
-                                        <span class="text-gray-300">Responsable: <span class="font-medium text-brand-light">Ana</span></span>
-                                        <span class="text-gray-400">Límite: <span class="font-medium text-yellow-400">2025-11-15</span></span>
-                                    </div>
-                                    <div class="mt-1">
-                                        <span class="text-xs font-bold text-red-400 bg-red-900/50 px-2 py-0.5 rounded-full">Alta</span>
-                                        <span class="text-xs font-bold text-blue-400 bg-blue-900/50 px-2 py-0.5 rounded-full ml-2">Pendiente</span>
-                                    </div>
-                                </li>
-                                -->
                             </ul>
                         </div>
                     </div>
@@ -425,7 +396,7 @@
         // ----------------------------------
         
         // ¡IMPORTANTE! Reemplaza esto con tu propia clave de API de Gemini
-        const GEMINI_API_KEY = "AIzaSyCiqpmd1hHjQxkWVlR4VY6zzlycHjBRLkM"; 
+        const GEMINI_API_KEY = ""; 
 
         const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`;
         
@@ -458,57 +429,7 @@
         let currentMeetingDuration = 0;
 
         // ----------------------------------
-        // ICONOS SVG
-        // ----------------------------------
-        // Objeto ICONS eliminado, los iconos ya están en el HTML.
-
-        
-        <!--
-        // ----------------------------------
-        // INICIALIZACIÓN DE PWA (DESHABILITADA)
-        // ----------------------------------
-        -->
-        
-        /**
-         * Registra el Service Worker desde el archivo externo sw.js.
-         */
-        function registerServiceWorker() {
-            // DESHABILITADO: El entorno de preview (blob:) no soporta el registro de Service Workers.
-            // Esto es lo que causa el error en la consola.
-            /*
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(registration => {
-                        console.log('Service Worker registrado con éxito:', registration);
-                    })
-                    .catch(error => {
-                        console.error('Error al registrar el Service Worker:', error);
-                    });
-            }
-            */
-            console.warn("Registro de Service Worker deshabilitado en este entorno de preview.");
-        }
-
-        /**
-         * Configura el listener para el evento 'beforeinstallprompt'.
-         */
-        function setupInstallPrompt(e) {
-            // DESHABILITADO
-            /*
-            // Prevenir que el mini-infobar aparezca
-            e.preventDefault();
-            // Guardar el evento para poder dispararlo después
-            deferredInstallPrompt = e;
-            // Mostrar nuestro botón de instalación personalizado
-            const installButton = document.getElementById('install-pwa-button');
-            if (installButton) {
-                installButton.classList.remove('hidden');
-                console.log('PWA está lista para ser instalada.');
-            }
-            */
-        }
-        
-
+        // INICIALIZACIÓN DE PWA (HABILITADA)
         // ----------------------------------
         
         /**
@@ -821,7 +742,7 @@
 
             } catch (err) {
                 console.error("Error al iniciar grabación:", err);
-                showInfoModal("Error de Micrófono", "No se pudo acceder al micrófono. Asegúrate de haber dado permiso.");
+                showInfoModal("Error de Micrófono", "No se pudo acceder al micrófono. Asegúrate de haber dado permiso. Si lo bloqueaste, re-habilítalo en la configuración del sitio.");
                 updateRecordingUI(false);
             }
         }
@@ -1394,7 +1315,6 @@
          */
         async function getGeminiSummary(transcriptText, meeting) {
             
-            // CORREGIDO: El schema debe ser estático, no puede contener variables.
             const schema = {
                 type: "OBJECT",
                 properties: {
@@ -1442,7 +1362,6 @@
                 required: ["titulo", "fecha", "hora", "resumen_general", "objetivo_general", "desarrollo_por_participante", "puntos_relevantes", "plan_de_accion", "temas"]
             };
 
-            // Pasamos la fecha y hora en el prompt del sistema para que la IA las use.
             const systemPrompt = `Eres un asistente experto que sintetiza reuniones en español a partir de una transcripción.
 Tu objetivo es devolver SIEMPRE un único objeto JSON válido que se adhiera estrictamente al esquema proporcionado.
 Usa la siguiente información para los campos de fecha y hora:
@@ -1643,7 +1562,7 @@ ${transcriptText}`;
             
             const openTasks = allActionItems.filter(t => t.status !== 'Hecha').slice(0, 10); // Limitar a 10
             
-            if (openTasks.length === 0) { // <-- CORREGIDO
+            if (openTasks.length === 0) {
                 tasksEmptyState.classList.remove('hidden');
                 tasksList.innerHTML = '';
                 return;
@@ -1668,9 +1587,8 @@ ${transcriptText}`;
         // ----------------------------------
         
         function setupProfile() {
-            // Botón de Instalación PWA (Deshabilitado)
+            // Botón de Instalación PWA (Habilitado)
             document.getElementById('install-pwa-button').addEventListener('click', async () => {
-                /*
                 if (deferredInstallPrompt) {
                     // Mostrar el prompt de instalación del navegador
                     deferredInstallPrompt.prompt();
@@ -1682,7 +1600,6 @@ ${transcriptText}`;
                     // Ocultar el botón
                     document.getElementById('install-pwa-button').classList.add('hidden');
                 }
-                */
             });
 
             // Botón de Borrar Datos
@@ -1788,11 +1705,11 @@ ${transcriptText}`;
                 setupModals();
                 setupProfile();
                 
-                // Configurar listener de instalación de PWA (Deshabilitado)
-                // window.addEventListener('beforeinstallprompt', setupInstallPrompt);
+                // Configurar listener de instalación de PWA (Habilitado)
+                window.addEventListener('beforeinstallprompt', setupInstallPrompt);
                 
-                // Registrar Service Worker (Deshabilitado)
-                // registerServiceWorker();
+                // Registrar Service Worker (Habilitado)
+                registerServiceWorker();
 
                 // Mostrar la página de grabación por defecto
                 showPage('page-record');
