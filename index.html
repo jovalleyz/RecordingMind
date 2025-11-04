@@ -243,7 +243,7 @@
                 <audio id="detail-audio-player" controls class="w-full mb-6"></audio>
 
                 <!-- Botón de IA -->
-                <button id="process-ai-button" class_disabled="bg-gray-600 cursor-not-allowed" class="w-full bg-brand text-white font-bold py-3 px-4 rounded-lg mb-6 flex items-center justify-center space-x-2 hover:bg-brand-dark transition-colors">
+                <button id="process-ai-button" class="w-full bg-brand text-white font-bold py-3 px-4 rounded-lg mb-6 flex items-center justify-center space-x-2 hover:bg-brand-dark transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
                         <path d="M10 3.5a1.5 1.5 0 0 1 3 0V5h-3V3.5Z" />
                         <path fill-rule="evenodd" d="M10 1.5a3.5 3.5 0 0 0-3.5 3.5V5H5a3 3 0 0 0-3 3v4.5a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3h-1.5V5A3.5 3.5 0 0 0 10 1.5ZM5.75 8.75a.75.75 0 0 0 0 1.5h8.5a.75.75 0 0 0 0-1.5h-8.5Z" clip-rule="evenodd" />
@@ -1216,7 +1216,6 @@
             const aiSpinner = document.getElementById('ai-loading-spinner');
             
             aiButton.disabled = true;
-            aiButton.classList.add(aiButton.getAttribute('class_disabled'));
             aiSpinner.classList.remove('hidden');
 
             try {
@@ -1303,7 +1302,6 @@
                 showInfoModal("Error de IA", `No se pudo procesar el resumen. ${error.message}`);
                 aiSpinner.classList.add('hidden');
                 aiButton.disabled = false;
-                aiButton.classList.remove(aiButton.getAttribute('class_disabled'));
             }
         }
         
