@@ -1,0 +1,24 @@
+{
+  "name": "MeetingMind",
+  "short_name": "MeetingMind",
+  "description": "Grabación, transcripción y minutas de reuniones con IA.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#06b6d4",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://placehold.co/192x192/06b6d4/ffffff?text=MM",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://placehold.co/512x512/06b6d4/ffffff?text=MM",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ]
+}
