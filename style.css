@@ -1,0 +1,95 @@
+[data-page] { display: none; }
+[data-page="record"].active { display: flex; }
+[data-page="history"].active { display: block; }
+[data-page="dashboard"].active { display: block; }
+[data-page="profile"].active { display: block; }
+
+/* Estilo de los botones de navegación */
+.nav-button {
+    color: #9ca3af; /* gray-400 */
+    transition: all 0.2s ease-in-out;
+}
+.nav-button.active {
+    color: #06b6d4; /* cyan-500 */
+    background-color: #1f2937; /* gray-800 */
+}
+.nav-button:hover:not(.active) {
+    color: #e5e7eb; /* gray-200 */
+}
+
+/* Ocultar scrollbars */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* Animación de grabación */
+@keyframes pulse-ring {
+    0% {
+        transform: scale(.33);
+        opacity: 0.8;
+    }
+    80%, 100% {
+        opacity: 0;
+    }
+}
+@keyframes pulse-dot {
+    0% {
+        transform: scale(0.8);
+    }
+    50% {
+        transform: scale(1);
+    }
+    100% {
+        transform: scale(0.8);
+    }
+}
+.pulse-ring {
+    animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+.pulse-dot {
+    animation: pulse-dot 1s cubic-bezier(0.455, 0.03, 0.515, 0.955) -0.4s infinite;
+}
+
+/* Checkbox toggle */
+input:checked ~ .dot {
+    transform: translateX(100%);
+    background-color: #06b6d4;
+}
+
+/* Modal */
+.modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.75);
+    z-index: 40;
+}
+.modal {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 50;
+    width: 90%;
+    max-width: 400px;
+}
+.modal.active, .modal-backdrop.active {
+    display: block;
+}
+
+/* Pestañas del Modal */
+.modal-tab-button.active {
+    border-color: #06b6d4; /* cyan-500 */
+    color: #22d3ee; /* cyan-400 */
+}
+.modal-tab-content {
+    display: none;
+}
+.modal-tab-content.active {
+    display: block;
+}
