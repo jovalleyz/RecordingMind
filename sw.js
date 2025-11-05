@@ -1,9 +1,11 @@
 // Nombramos la caché
-const CACHE_NAME = 'meetingmind-v1';
+const CACHE_NAME = 'meetingmind-v2'; // Versión actualizada
 
 // Archivos clave para guardar en caché (el "App Shell")
 const urlsToCache = [
     './index.html',
+    './style.css',  // <-- AÑADIDO
+    './app.js',     // <-- AÑADIDO
     './manifest.json',
     'https://cdn.tailwindcss.com',
     'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
@@ -16,7 +18,7 @@ self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => {
-                console.log('Cache abierto, agregando el App Shell');
+                console.log('Cache abierto, agregando el App Shell v2');
                 // Agrega todos los archivos del "App Shell" a la caché
                 return cache.addAll(urlsToCache);
             })
@@ -38,7 +40,7 @@ self.addEventListener('fetch', event => {
                 return fetch(event.request).then(
                     response => {
                         // Comprobar si la respuesta es válida
-                        if(!response || response.status !== 200 || response.type !== 'basic' && response.type !== 'opaque') {
+                        if(!response || response.status !== 200 || (response.type !== 'basic' && response.type !== 'opaque')) {
                             return response; // Devolver la respuesta tal cual (ej. de API de Gemini)
                         }
 
@@ -48,13 +50,20 @@ self.addEventListener('fetch', event => {
                         // Abrir nuestra caché y guardar la nueva respuesta
                         caches.open(CACHE_NAME)
                             .then(cache => {
-                                cache.put(event.request, responseToCache);
+                                // Solo cachear peticiones GET
+                                if (event.request.method === 'GET') {
+                                    cache.put(event.request, responseToCache);
+                                }
                             });
 
                         // Devolver la respuesta original a la aplicación
                         return response;
                     }
-                );
+                ).catch(error => {
+                    // Error de red (offline)
+                    console.warn('Fallo de red al buscar:', event.request.url, error.message);
+                    // Aquí podrías devolver una página offline genérica si la tuvieras
+                });
             })
     );
 });
