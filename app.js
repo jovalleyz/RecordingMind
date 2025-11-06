@@ -1,445 +1,978 @@
 // ¡IMPORTANTE! Reemplaza esto con tu propia clave de API de Gemini
-const GEMINI_API_KEY = "AIzaSyCiqpmd1hHjQxkWVlR4VY6zzlycHjBRLkM";
+const GEMINI_API_KEY = ""; 
 
-// Configuración de la Base de Datos
-const DB_NAME = 'MeetingMindDB';
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`;
+
+const DB_NAME = "MeetingMindDB";
 const DB_VERSION = 1;
+
 const STORES = {
-    MEETINGS: 'meetings',       // Almacena metadatos y el BLOB de audio
-    TRANSCRIPTS: 'transcripts', // Almacena el texto de la transcripción
-    SUMMARIES: 'summaries',     // Almacena el JSON de la IA
-    ACTION_ITEMS: 'actionItems' // Almacena tareas extraídas
+    MEETINGS: "meetings",         // Meeting (metadata)
+    AUDIO_FILES: "audioFiles",   // AudioFile (blob + metadata)
+    TRANSCRIPTS: "transcripts", // Transcript (texto)
+    SUMMARIES: "summaries",       // Summary (JSON de IA)
+    ACTION_ITEMS: "actionItems"  // ActionItem (extraído de IA)
 };
 
-let db; // Variable para la instancia de la DB
-
-// Variables de estado de grabación
+// ----------------------------------
+// ESTADO DE LA APLICACIÓN
+// ----------------------------------
+let db;
+let currentUserId = 'mock-user-123'; // Simulación de autenticación
 let mediaRecorder;
 let audioChunks = [];
 let recordingStartTime;
 let timerInterval;
+let audioContext;
+let analyser;
+let dataArray;
+let animationFrameId;
+let deferredInstallPrompt = null;
+let currentMeetingBlob = null;
+let currentMeetingDuration = 0;
 
-// Variables de estado de transcripción en vivo
+// API de Reconocimiento de Voz
 let recognition;
 let finalTranscript = '';
-let interimTranscript = '';
+let isSpeechRecognitionActive = false;
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (!SpeechRecognition) {
-    console.warn('SpeechRecognition no es soportado por este navegador. Se deberá transcribir manualmente.');
+if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.continuous = true; // Sigue escuchando
+    recognition.interimResults = true; // Muestra resultados intermedios
+    recognition.lang = 'es-ES'; // Configurar idioma
 }
 
-// Variables de estado de la PWA
-let deferredInstallPrompt;
-
-// --- INICIALIZACIÓN DE LA APP ---
-
-// Evento principal que se dispara cuando el HTML está cargado
-document.addEventListener('DOMContentLoaded', initApp);
+// ----------------------------------
+// INICIALIZACIÓN DE PWA
+// ----------------------------------
 
 /**
- * Función principal de inicialización
- */
-async function initApp() {
-    console.log('Iniciando MeetingMind v2...');
-    try {
-        await initDB();
-        registerServiceWorker();
-        initEventListeners();
-        initNavigation();
-        initPWAInstall();
-        renderHistoryList(); // Cargar historial al inicio
-        renderDashboard();   // Cargar dashboard al inicio
-    } catch (error) {
-        console.error("Error al inicializar la aplicación:", error);
-    }
-}
-
-/**
- * Registra el Service Worker para la PWA
+ * Registra el Service Worker desde el archivo externo sw.js.
  */
 function registerServiceWorker() {
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js')
-            .then(registration => console.log('Service Worker registrado con éxito:', registration))
-            .catch(error => console.error('Error al registrar el Service Worker:', error));
+            .then(registration => {
+                console.log('Service Worker registrado con éxito:', registration);
+            })
+            .catch(error => {
+                console.error('Error al registrar el Service Worker:', error);
+            });
     }
 }
 
 /**
- * Inicializa los listeners para la instalación de la PWA
+ * Configura el listener para el evento 'beforeinstallprompt'.
  */
-function initPWAInstall() {
-    const installButtonContainer = document.getElementById('install-pwa-container');
+function setupInstallPrompt(e) {
+    // Prevenir que el mini-infobar aparezca
+    e.preventDefault();
+    // Guardar el evento para poder dispararlo después
+    deferredInstallPrompt = e;
+    // Mostrar nuestro botón de instalación personalizado
     const installButton = document.getElementById('install-pwa-button');
+    if (installButton) {
+        installButton.classList.remove('hidden');
+        console.log('PWA está lista para ser instalada.');
+    }
+}
 
-    window.addEventListener('beforeinstallprompt', (event) => {
-        // Prevenir que el mini-infobar aparezca en Chrome
-        event.preventDefault();
-        // Guardar el evento para dispararlo luego
-        deferredInstallPrompt = event;
-        // Mostrar nuestro botón de instalación
-        installButtonContainer.classList.remove('hidden');
+// ----------------------------------
+// BASE DE DATOS (IndexedDB)
+// ----------------------------------
+
+/**
+ * Inicializa la base de datos IndexedDB.
+ * @returns {Promise<IDBDatabase>}
+ */
+function initDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+
+            if (!db.objectStoreNames.contains(STORES.MEETINGS)) {
+                const meetingsStore = db.createObjectStore(STORES.MEETINGS, { keyPath: 'id', autoIncrement: true });
+                meetingsStore.createIndex('userIdIndex', 'userId', { unique: false });
+                meetingsStore.createIndex('dateIndex', 'startAt', { unique: false });
+            }
+            
+            if (!db.objectStoreNames.contains(STORES.AUDIO_FILES)) {
+                const audioStore = db.createObjectStore(STORES.AUDIO_FILES, { keyPath: 'id', autoIncrement: true });
+                audioStore.createIndex('meetingIdIndex', 'meetingId', { unique: true });
+            }
+
+            if (!db.objectStoreNames.contains(STORES.TRANSCRIPTS)) {
+                const transcriptStore = db.createObjectStore(STORES.TRANSCRIPTS, { keyPath: 'id', autoIncrement: true });
+                transcriptStore.createIndex('meetingIdIndex', 'meetingId', { unique: true });
+            }
+            if (!db.objectStoreNames.contains(STORES.SUMMARIES)) {
+                const summaryStore = db.createObjectStore(STORES.SUMMARIES, { keyPath: 'id', autoIncrement: true });
+                summaryStore.createIndex('meetingIdIndex', 'meetingId', { unique: true });
+            }
+
+            if (!db.objectStoreNames.contains(STORES.ACTION_ITEMS)) {
+                const actionItemsStore = db.createObjectStore(STORES.ACTION_ITEMS, { keyPath: 'id', autoIncrement: true });
+                actionItemsStore.createIndex('meetingIdIndex', 'meetingId', { unique: false });
+                actionItemsStore.createIndex('statusIndex', 'status', { unique: false });
+            }
+        };
+
+        request.onsuccess = (event) => {
+            db = event.target.result;
+            console.log("Base de datos inicializada con éxito.");
+            resolve(db);
+        };
+
+        request.onerror = (event) => {
+            console.error("Error al abrir la base de datos:", event.target.errorCode);
+            reject(event.target.errorCode);
+        };
     });
+}
 
-    installButton.addEventListener('click', async () => {
-        if (deferredInstallPrompt) {
-            // Mostrar el prompt de instalación
-            deferredInstallPrompt.prompt();
-            // Esperar la decisión del usuario
-            const { outcome } = await deferredInstallPrompt.userChoice;
-            console.log(`Resultado de la instalación: ${outcome}`);
-            // Limpiar el evento
-            deferredInstallPrompt = null;
-            // Ocultar el botón
-            installButtonContainer.classList.add('hidden');
+/**
+ * Operación genérica para añadir datos a un store.
+ * @param {string} storeName - El nombre del store.
+ * @param {object} data - Los datos a añadir.
+ * @returns {Promise<number>} - El ID del ítem añadido.
+ */
+function dbAdd(storeName, data) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            console.error("La BD no está inicializada.");
+            return reject("DB not initialized");
+        }
+        const transaction = db.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.add(data);
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result); // Retorna el ID
+        };
+
+        request.onerror = (event) => {
+            console.error("Error al añadir datos:", event.target.error);
+            reject(event.target.error);
+        };
+    });
+}
+
+/**
+ * Operación genérica para obtener todos los datos de un store.
+ * @param {string} storeName - El nombre del store.
+ * @returns {Promise<object[]>} - Un array de objetos del store.
+ */
+function dbGetAll(storeName) {
+    return new Promise((resolve, reject) => {
+        if (!db) return reject("DB not initialized");
+        const transaction = db.transaction([storeName], 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.getAll();
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+
+        request.onerror = (event) => {
+            console.error("Error al obtener todos los datos:", event.target.error);
+            reject(event.target.error);
+        };
+    });
+}
+
+/**
+ * Operación genérica para obtener un ítem por su ID.
+ * @param {string} storeName - El nombre del store.
+ * @param {number} id - El ID del ítem.
+ * @returns {Promise<object>} - El objeto del store.
+ */
+function dbGet(storeName, id) {
+    return new Promise((resolve, reject) => {
+        if (!db) return reject("DB not initialized");
+        const transaction = db.transaction([storeName], 'readonly');
+        const store = transaction.objectStore(storeName);
+        const request = store.get(id);
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+
+        request.onerror = (event) => {
+            console.error("Error al obtener datos por ID:", event.target.error);
+            reject(event.target.error);
+        };
+    });
+}
+/**
+ * Operación genérica para actualizar un ítem.
+ * @param {string} storeName - El nombre del store.
+ * @param {object} data - Los datos actualizados (debe incluir el ID).
+ * @returns {Promise<object>}
+ */
+function dbPut(storeName, data) {
+    return new Promise((resolve, reject) => {
+        if (!db) return reject("DB not initialized");
+        const transaction = db.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const request = store.put(data);
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+
+        request.onerror = (event) => {
+            console.error("Error al actualizar datos:", event.target.error);
+            reject(event.target.error);
+        };
+    });
+}
+
+/**
+ * Operación para obtener un ítem por un índice.
+ * @param {string} storeName - El nombre del store.
+ * @param {string} indexName - El nombre del índice.
+ * @param {any} value - El valor a buscar en el índice.
+ * @returns {Promise<object>} - El objeto encontrado.
+ */
+function dbGetByIndex(storeName, indexName, value) {
+    return new Promise((resolve, reject) => {
+        if (!db) return reject("DB not initialized");
+        const transaction = db.transaction([storeName], 'readonly');
+        const store = transaction.objectStore(storeName);
+        const index = store.index(indexName);
+        const request = index.get(value);
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+
+        request.onerror = (event) => {
+            console.error("Error al obtener por índice:", event.target.error);
+            reject(event.target.error);
+        };
+    });
+}
+
+/**
+ * Operación para obtener TODOS los ítems por un índice.
+ * @param {string} storeName - El nombre del store.
+ * @param {string} indexName - El nombre del índice.
+ * @param {any} value - El valor a buscar en el índice.
+ * @returns {Promise<object[]>} - Un array de objetos.
+ */
+function dbGetAllByIndex(storeName, indexName, value) {
+    return new Promise((resolve, reject) => {
+        if (!db) return reject("DB not initialized");
+        const transaction = db.transaction([storeName], 'readonly');
+        const store = transaction.objectStore(storeName);
+        const index = store.index(indexName);
+        const request = index.getAll(value);
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+
+        request.onerror = (event) => {
+            console.error("Error al obtener todo por índice:", event.target.error);
+            reject(event.target.error);
+        };
+    });
+}
+
+
+// ----------------------------------
+// LÓGICA DE NAVEGACIÓN
+// ----------------------------------
+
+/**
+ * Cambia la página visible.
+ * @param {string} pageId - El ID de la página a mostrar (ej: 'page-record').
+ */
+function navigateTo(pageId) {
+    // Ocultar todas las páginas
+    document.querySelectorAll('.page-content').forEach(page => {
+        if (page.id !== 'page-detail') { // El detalle se maneja diferente
+            page.classList.add('hidden');
         }
     });
-}
 
+    // Mostrar la página solicitada
+    const targetPage = document.getElementById(pageId);
+    if (targetPage) {
+        targetPage.classList.remove('hidden');
+    }
 
-// --- LÓGICA DE NAVEGACIÓN ---
-
-/**
- * Configura los botones de la barra de navegación inferior
- */
-function initNavigation() {
-    const navButtons = document.querySelectorAll('.nav-button');
-    navButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const pageName = button.dataset.page;
-            
-            // Ocultar todas las páginas y botones
-            document.querySelectorAll('[data-page]').forEach(page => page.classList.remove('active'));
-            navButtons.forEach(btn => btn.classList.remove('active'));
-
-            // Mostrar la página y el botón seleccionados
-            document.getElementById(`page-${pageName}`).classList.add('active');
+    // Actualizar estado activo de la barra de navegación
+    document.querySelectorAll('.nav-button').forEach(button => {
+        button.classList.remove('active');
+        if (button.dataset.page === pageId) {
             button.classList.add('active');
-
-            // Acciones específicas por página
-            if (pageName === 'history') {
-                renderHistoryList();
-            } else if (pageName === 'dashboard') {
-                renderDashboard();
-            }
-        });
+        }
     });
-}
 
-/**
- * Configura las pestañas dentro del modal de detalle
- */
-function initModalTabs() {
-    const modalTabButtons = document.querySelectorAll('.modal-tab-button');
-    const modalTabContents = document.querySelectorAll('.modal-tab-content');
-
-    modalTabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const tabName = button.dataset.tab;
-
-            // Desactivar todos
-            modalTabButtons.forEach(btn => btn.classList.remove('active'));
-            modalTabContents.forEach(content => content.classList.remove('active'));
-
-            // Activar el seleccionado
-            button.classList.add('active');
-            document.getElementById(`modal-tab-${tabName}`).classList.add('active');
-        });
-    });
-}
-
-
-// --- MANEJO DE EVENTOS (LISTENERS) ---
-
-/**
- * Agrupa todos los listeners de eventos de la UI
- */
-function initEventListeners() {
-    // Pestaña Grabar
-    document.getElementById('consent-checkbox').addEventListener('change', toggleRecordButton);
-    document.getElementById('record-button').addEventListener('click', handleRecordButtonClick);
-
-    // Modal de Detalle
-    document.getElementById('modal-close-button').addEventListener('click', closeMeetingDetailModal);
-    document.getElementById('modal-backdrop').addEventListener('click', closeMeetingDetailModal);
-    document.getElementById('generate-ai-summary-button').addEventListener('click', processMeetingWithAI);
-    document.getElementById('modal-save-metadata-button').addEventListener('click', saveModalMetadata);
-    document.getElementById('modal-delete-button').addEventListener('click', handleDeleteMeetingClick);
-    document.getElementById('save-transcript-button').addEventListener('click', saveTranscriptChanges);
-    document.getElementById('modal-export-json-button').addEventListener('click', exportMeetingAsJSON);
-
-    // Pestaña Historial
-    document.getElementById('search-history').addEventListener('input', renderHistoryList);
-
-    // Pestaña Perfil
-    document.getElementById('export-all-data').addEventListener('click', exportAllData);
-    document.getElementById('delete-all-data').addEventListener('click', handleDeleteAllDataClick);
-    
-    // Alertas
-    document.getElementById('alert-modal-cancel').addEventListener('click', closeAlertModal);
-
-    // Inicializar pestañas del modal
-    initModalTabs();
-}
-
-
-// --- LÓGICA DE GRABACIÓN ---
-
-/**
- * Activa/Desactiva el botón de grabar basado en el consentimiento
- */
-function toggleRecordButton() {
-    const checkbox = document.getElementById('consent-checkbox');
-    const recordButton = document.getElementById('record-button');
-    recordButton.disabled = !checkbox.checked;
-}
-
-/**
- * Maneja el clic en el botón principal de grabación (iniciar/detener)
- */
-function handleRecordButtonClick() {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        stopRecording();
-    } else {
-        startRecording();
+    // Cargar datos si es necesario
+    if (pageId === 'page-history') {
+        renderHistoryList();
+    }
+    if (pageId === 'page-dashboard') {
+        renderDashboard();
     }
 }
+/**
+ * Muestra el modal de alerta genérico.
+ * @param {string} title - Título del modal.
+ * @param {string} message - Mensaje del modal.
+ */
+function showAlert(title, message) {
+    document.getElementById('alert-title').textContent = title;
+    document.getElementById('alert-message').textContent = message;
+    
+    const modal = document.getElementById('alert-modal');
+    modal.classList.remove('hidden');
+    
+    // Enfocar el botón OK para accesibilidad y enter
+    document.getElementById('alert-ok-button').focus();
+}
 
 /**
- * Inicia la grabación de audio y la transcripción en vivo
+ * Cierra el modal de alerta genérico.
  */
-async function startRecording() {
-    // Solicitar permiso de micrófono
+function closeAlert() {
+    document.getElementById('alert-modal').classList.add('hidden');
+}
+
+
+// ----------------------------------
+// LÓGICA DE GRABACIÓN
+// ----------------------------------
+
+/**
+ * Inicializa el stream de audio y el MediaRecorder.
+ * @returns {Promise<MediaStream>}
+ */
+async function initAudio() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-        recordingStartTime = new Date();
+        // Configurar MediaRecorder
+        const options = {
+            mimeType: 'audio/webm;codecs=opus'
+        };
+        if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+            console.log("audio/webm no soportado, usando default.");
+            mediaRecorder = new MediaRecorder(stream);
+        } else {
+            mediaRecorder = new MediaRecorder(stream, options);
+        }
 
-        mediaRecorder.ondataavailable = event => {
-            audioChunks.push(event.data);
+        // Configurar eventos de MediaRecorder
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
+            }
         };
 
-        mediaRecorder.onstop = saveRecording;
+        mediaRecorder.onstop = () => {
+            currentMeetingBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+            audioChunks = []; // Limpiar para la próxima grabación
+            
+            // Detener visualizador
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.close();
+            }
+            
+            // Mostrar modal de guardar
+            currentMeetingDuration = Date.now() - recordingStartTime;
+            const durationInSeconds = Math.floor(currentMeetingDuration / 1000);
+            document.getElementById('modal-duration-info').textContent = `Duración: ${formatTime(durationInSeconds)}`;
+            document.getElementById('meeting-title-input').value = `Grabación - ${new Date().toLocaleString('es-ES')}`;
+            document.getElementById('save-modal').classList.remove('hidden');
+        };
+        
+        // Configurar Visualizador
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        
+        analyser.fftSize = 256; // Tamaño de la FFT
+        const bufferLength = analyser.frequencyBinCount;
+        dataArray = new Uint8Array(bufferLength);
+        
+        return stream; // Retorna el stream para poder cerrarlo si es necesario
 
-        mediaRecorder.start();
-        startTimer();
-        updateRecordingUI(true);
-
-        // Iniciar transcripción en vivo si es soportada
-        startLiveTranscription();
-
-    } catch (error) {
-        console.error('Error al iniciar la grabación:', error);
-        showAlertModal("Error de Micrófono", "No se pudo acceder al micrófono. Por favor, verifica los permisos en tu navegador.");
+    } catch (err) {
+        console.error('Error al acceder al micrófono:', err);
+        showAlert('Error de Micrófono', 'No se pudo acceder al micrófono. Por favor, verifica los permisos del navegador.');
     }
+}
+/**
+ * Inicia el proceso de grabación.
+ */
+async function startRecording() {
+    // Verificar API Key de Gemini
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === "") {
+        showAlert('Error de Configuración', 'La clave API de Gemini no está configurada en el código. No se puede procesar la IA.');
+        // Nota: Permitimos grabar, pero la IA fallará.
+    }
+    
+    // Inicializar audio (pedir permisos)
+    const stream = await initAudio();
+    if (!stream || !mediaRecorder) {
+        // El initAudio ya mostró una alerta si falló
+        return;
+    }
+
+    // Limpiar transcripción anterior
+    finalTranscript = '';
+    isSpeechRecognitionActive = false;
+
+    // Iniciar MediaRecorder
+    mediaRecorder.start();
+    recordingStartTime = Date.now();
+    
+    // Iniciar cronómetro
+    updateTimer(); // Actualiza a 00:00:00
+    timerInterval = setInterval(updateTimer, 1000);
+    
+    // Iniciar visualizador
+    drawVisualizer();
+    
+    // Iniciar Reconocimiento de Voz (si está disponible)
+    if (recognition) {
+        try {
+            recognition.start();
+            isSpeechRecognitionActive = true;
+            console.log("Reconocimiento de voz iniciado.");
+        } catch (e) {
+            console.error("Error al iniciar reconocimiento de voz:", e);
+            // Puede fallar si ya estaba corriendo, es benigno
+        }
+    }
+
+    // Actualizar UI
+    updateRecordingUI(true);
 }
 
 /**
- * Detiene la grabación de audio y la transcripción
+ * Detiene el proceso de grabación.
  */
 function stopRecording() {
-    if (mediaRecorder) {
-        mediaRecorder.stop();
-        stopTimer();
-        updateRecordingUI(false);
-        stopLiveTranscription();
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop(); // Esto disparará el evento 'onstop'
+    }
+    
+    // Detener cronómetro
+    clearInterval(timerInterval);
+    
+    // Detener Reconocimiento de Voz
+    if (recognition && isSpeechRecognitionActive) {
+        recognition.stop();
+        isSpeechRecognitionActive = false;
+        console.log("Reconocimiento de voz detenido.");
+    }
+    
+    // Actualizar UI
+    updateRecordingUI(false);
+}
+
+/**
+ * Actualiza el cronómetro en la UI.
+ */
+function updateTimer() {
+    if (!recordingStartTime) {
+        document.getElementById('timer').textContent = "00:00:00";
+        return;
+    }
+    const seconds = Math.floor((Date.now() - recordingStartTime) / 1000);
+    document.getElementById('timer').textContent = formatTime(seconds);
+}
+
+/**
+ * Dibuja el visualizador de audio en el canvas.
+ */
+function drawVisualizer() {
+    const canvas = document.getElementById('audio-visualizer');
+    const canvasCtx = canvas.getContext('2d');
+    const WIDTH = canvas.width;
+    const HEIGHT = canvas.height;
+
+    analyser.getByteFrequencyData(dataArray); // Obtener datos de frecuencia
+    
+    canvasCtx.fillStyle = '#111827'; // bg-gray-900 (limpiar)
+    canvasCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    const barWidth = (WIDTH / dataArray.length) * 2;
+    let barHeight;
+    let x = 0;
+
+    canvasCtx.fillStyle = '#06b6d4'; // text-cyan-500
+
+    for (let i = 0; i < dataArray.length; i++) {
+        barHeight = dataArray[i] / 2; // Escalar la altura
+        if (barHeight < 1) barHeight = 1; // Mínimo de 1px
+
+        canvasCtx.fillRect(x, (HEIGHT - barHeight) / 2, barWidth, barHeight);
+        x += barWidth + 1; // Espacio entre barras
+    }
+
+    // Seguir dibujando si la grabación está activa
+    animationFrameId = requestAnimationFrame(drawVisualizer);
+}
+/**
+ * Actualiza la UI del botón de grabación.
+ * @param {boolean} isRecording - True si está grabando.
+ */
+function updateRecordingUI(isRecording) {
+    const recordButton = document.getElementById('record-button');
+    const pulseRing = document.getElementById('pulse-ring');
+    const pulseDot = document.getElementById('pulse-dot');
+    const micIcon = document.getElementById('icon-mic');
+    const statusText = document.getElementById('recording-status-text');
+
+    if (isRecording) {
+        statusText.textContent = "Grabando...";
+        statusText.classList.add('fade-in');
+        
+        // Mostrar animación
+        pulseRing.classList.remove('hidden');
+        pulseDot.classList.remove('hidden');
+        
+        // Mantener el icono de mic visible, pero indicar grabación (botón ya cambia)
+        recordButton.classList.add('bg-red-500', 'hover:bg-red-600');
+        recordButton.classList.remove('bg-cyan-500', 'hover:bg-cyan-600');
+
+    } else {
+        statusText.textContent = "";
+        statusText.classList.remove('fade-in');
+        
+        // Ocultar animación
+        pulseRing.classList.add('hidden');
+        pulseDot.classList.add('hidden');
+        
+        // Restaurar icono
+        recordButton.classList.remove('bg-red-500', 'hover:bg-red-600');
+        recordButton.classList.add('bg-cyan-500', 'hover:bg-cyan-600');
     }
 }
 
 /**
- * Guarda la grabación en IndexedDB
+ * Guarda la reunión en la base de datos.
  */
-async function saveRecording() {
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-    const recordingEndTime = new Date();
-    const duration = recordingEndTime.getTime() - recordingStartTime.getTime();
-
-    const newMeeting = {
-        id: `meeting_${Date.now()}`,
-        title: `Grabación - ${recordingStartTime.toLocaleString()}`,
-        startAt: recordingStartTime.toISOString(),
-        endAt: recordingEndTime.toISOString(),
-        duration: duration,
+async function saveMeeting() {
+    const title = document.getElementById('meeting-title-input').value || "Grabación sin título";
+    const now = Date.now();
+    const startTime = recordingStartTime;
+    
+    // 1. Guardar metadatos de la reunión
+    const meetingData = {
+        userId: currentUserId,
+        title: title,
+        startAt: new Date(startTime).toISOString(),
+        endAt: new Date(now).toISOString(),
+        duration: currentMeetingDuration, // en milisegundos
         tags: [],
-        audioBlob: audioBlob,
-        transcript: finalTranscript, // Guardar la transcripción en vivo
-        aiStatus: 'pending' // 'pending', 'processing', 'done'
+        participants: [],
+        status: 'recorded' // Estado inicial
     };
 
     try {
-        await dbAdd(STORES.MEETINGS, newMeeting);
-        console.log('Reunión guardada:', newMeeting.id);
-        // Opcional: mostrar un mensaje de éxito
-    } catch (error) {
-        console.error('Error al guardar la reunión:', error);
-    }
+        const meetingId = await dbAdd(STORES.MEETINGS, meetingData);
+        console.log(`Reunión guardada con ID: ${meetingId}`);
 
-    // Limpiar para la próxima grabación
-    audioChunks = [];
-    finalTranscript = '';
-    interimTranscript = '';
+        // 2. Guardar archivo de audio
+        const audioData = {
+            meetingId: meetingId,
+            audioBlob: currentMeetingBlob, // Guardar el Blob directamente
+            mimeType: currentMeetingBlob.type,
+            sizeBytes: currentMeetingBlob.size
+        };
+        await dbAdd(STORES.AUDIO_FILES, audioData);
+        console.log(`Audio guardado para Meeting ID: ${meetingId}`);
+
+        // 3. Guardar transcripción (si la hubo)
+        const transcriptData = {
+            meetingId: meetingId,
+            language: recognition ? recognition.lang : 'es-ES',
+            text: finalTranscript || "", // Usar la transcripción final o vacío
+            source: finalTranscript ? 'live' : 'none' // Indicar si fue en vivo o no
+        };
+        await dbAdd(STORES.TRANSCRIPTS, transcriptData);
+        console.log(`Transcripción guardada para Meeting ID: ${meetingId}. Fuente: ${transcriptData.source}`);
+
+        // 4. Limpiar y cerrar modal
+        currentMeetingBlob = null;
+        currentMeetingDuration = 0;
+        finalTranscript = '';
+        document.getElementById('save-modal').classList.add('hidden');
+        
+        // 5. Ir al historial para ver la nueva reunión
+        navigateTo('page-history');
+
+    } catch (error) {
+        console.error("Error al guardar la reunión completa:", error);
+        showAlert("Error al Guardar", "No se pudo guardar la reunión. Revisa la consola.");
+    }
+}
+/**
+ * Descarta la grabación actual.
+ */
+function discardRecording() {
+    currentMeetingBlob = null;
+    currentMeetingDuration = 0;
+    finalTranscript = ''; // También descarta la transcripción
+    document.getElementById('save-modal').classList.add('hidden');
+    console.log("Grabación descartada.");
 }
 
 
-// --- LÓGICA DE TRANSCRIPCIÓN EN VIVO (SpeechRecognition) ---
+// ----------------------------------
+// LÓGICA DE HISTORIAL Y DETALLE
+// ----------------------------------
 
 /**
- * Inicia la API de SpeechRecognition
+ * Carga y renderiza la lista de reuniones en el historial.
  */
-function startLiveTranscription() {
-    if (!SpeechRecognition) {
-        document.getElementById('recording-status').textContent = 'Transcripción en vivo no soportada.';
-        return; 
-    }
-
-    recognition = new SpeechRecognition();
-    recognition.lang = document.getElementById('user-language').value || 'es-ES';
-    recognition.continuous = true; // Seguir escuchando
-    recognition.interimResults = true; // Mostrar resultados intermedios
+async function renderHistoryList() {
+    const listContainer = document.getElementById('history-list-container');
+    const emptyState = document.getElementById('history-empty-state');
     
-    finalTranscript = ''; // Reiniciar transcripción final
+    try {
+        const meetings = await dbGetAll(STORES.MEETINGS);
+        
+        // Ordenar: más recientes primero
+        meetings.sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
 
-    recognition.onresult = (event) => {
-        interimTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript + ' ';
-            } else {
-                interimTranscript += event.results[i][0].transcript;
+        if (meetings.length === 0) {
+            emptyState.classList.remove('hidden');
+            // Limpiar lista por si acaso
+            const existingCards = listContainer.querySelectorAll('.meeting-card');
+            existingCards.forEach(card => card.remove());
+            return;
+        }
+
+        emptyState.classList.add('hidden');
+        
+        // Limpiar lista anterior antes de re-renderizar
+        const existingCards = listContainer.querySelectorAll('.meeting-card');
+        existingCards.forEach(card => card.remove());
+
+        // Crear y añadir tarjetas de reunión
+        meetings.forEach(meeting => {
+            const card = document.createElement('div');
+            card.className = 'bg-gray-800 p-4 rounded-lg shadow mb-3 flex justify-between items-center meeting-card';
+            card.dataset.meetingId = meeting.id;
+
+            const durationSec = Math.floor(meeting.duration / 1000);
+            const statusColor = getStatusColor(meeting.status);
+
+            card.innerHTML = `
+                <div>
+                    <h3 class="text-lg font-semibold text-white truncate">${meeting.title}</h3>
+                    <p class="text-sm text-gray-400">${new Date(meeting.startAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                    <p class="text-sm text-gray-500">Duración: ${formatTime(durationSec)}</p>
+                </div>
+                <div class="text-right">
+                    <span class="inline-block px-2 py-1 text-xs font-semibold rounded-full ${statusColor.bg} ${statusColor.text}">
+                        ${statusColor.label}
+                    </span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500 mt-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                </div>
+            `;
+            
+            // Añadir evento de clic para abrir detalles
+            card.addEventListener('click', () => openDetailPage(meeting.id));
+            
+            listContainer.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error("Error al renderizar el historial:", error);
+    }
+}
+
+/**
+ * Abre la página de detalle para una reunión específica.
+ * @param {number} meetingId - El ID de la reunión a abrir.
+ */
+async function openDetailPage(meetingId) {
+    const detailPage = document.getElementById('page-detail');
+    detailPage.dataset.currentMeetingId = meetingId; // Guardar ID actual
+    
+    try {
+        // 1. Obtener Metadatos de la Reunión
+        const meeting = await dbGet(STORES.MEETINGS, meetingId);
+        if (!meeting) {
+            showAlert("Error", "No se encontró la reunión.");
+            return;
+        }
+
+        // 2. Obtener Archivo de Audio
+        const audioRecord = await dbGetByIndex(STORES.AUDIO_FILES, 'meetingIdIndex', meetingId);
+        const audioPlayer = document.getElementById('audio-player');
+        if (audioRecord && audioRecord.audioBlob) {
+            const audioUrl = URL.createObjectURL(audioRecord.audioBlob);
+            audioPlayer.src = audioUrl;
+            audioPlayer.style.display = 'block';
+        } else {
+            audioPlayer.style.display = 'none'; // Ocultar si no hay audio
+        }
+        // 3. Obtener Transcripción
+        const transcriptRecord = await dbGetByIndex(STORES.TRANSCRIPTS, 'meetingIdIndex', meetingId);
+        const transcriptEditor = document.getElementById('transcript-editor');
+        if (transcriptRecord) {
+            transcriptEditor.value = transcriptRecord.text || "";
+            if (transcriptRecord.text && transcriptRecord.source === 'live') {
+                // Si hay texto y fue en vivo, lo consideramos "transcrito"
+                if (meeting.status === 'recorded') {
+                    meeting.status = 'transcribed';
+                    await dbPut(STORES.MEETINGS, meeting);
+                }
             }
+        } else {
+            transcriptEditor.value = ""; // Limpiar si no hay record
+        }
+
+        // 4. Obtener Minuta (Resumen IA)
+        const summaryRecord = await dbGetByIndex(STORES.SUMMARIES, 'meetingIdIndex', meetingId);
+        const summaryContent = document.getElementById('summary-content');
+        const summaryEmptyState = document.getElementById('summary-empty-state');
+        if (summaryRecord) {
+            summaryContent.innerHTML = formatSummaryToHTML(summaryRecord.data);
+            summaryContent.classList.remove('hidden');
+            summaryEmptyState.classList.add('hidden');
+        } else {
+            summaryContent.innerHTML = '';
+            summaryContent.classList.add('hidden');
+            summaryEmptyState.classList.remove('hidden');
+        }
+
+        // 5. Rellenar detalles y estado del botón IA
+        const statusColor = getStatusColor(meeting.status);
+        document.getElementById('detail-title').textContent = meeting.title;
+        document.getElementById('detail-date').textContent = new Date(meeting.startAt).toLocaleString('es-ES');
+        document.getElementById('detail-duration').textContent = formatTime(Math.floor(meeting.duration / 1000));
+        document.getElementById('detail-status').textContent = statusColor.label;
+
+        // Lógica del botón de IA
+        const aiButton = document.getElementById('process-ai-button');
+        const aiButtonText = document.getElementById('ai-button-text');
+        
+        if (meeting.status === 'summarized') {
+            aiButtonText.textContent = "Minuta Generada (Completo)";
+            aiButton.disabled = true;
+        } else if (meeting.status === 'transcribed' || transcriptEditor.value.trim().length > 0) {
+            aiButtonText.textContent = "Generar Resumen (IA)";
+            aiButton.disabled = false;
+        } else {
+            aiButtonText.textContent = "Transcripción Vacía";
+            aiButton.disabled = true; // Deshabilitado si no hay texto
         }
         
-        // Actualizar UI con transcripción en vivo
-        const statusEl = document.getElementById('recording-status');
-        if (statusEl) {
-             statusEl.textContent = 'Transcribiendo: ' + interimTranscript;
-        }
-    };
+        // 6. Mostrar la página y resetear pestañas
+        navigateToTab('tab-summary');
+        detailPage.classList.remove('translate-x-full');
 
-    recognition.onerror = (event) => {
-        console.error('SpeechRecognition error:', event.error);
-        const statusEl = document.getElementById('recording-status');
-        if (event.error === 'no-speech' || event.error === 'audio-capture') {
-             statusEl.textContent = 'Error de audio. Reintentando...';
-        } else {
-            statusEl.textContent = 'Error de transcripción.';
-        }
-    };
+    } catch (error) {
+        console.error("Error al abrir detalle:", error);
+        showAlert("Error", "No se pudo cargar el detalle de la reunión.");
+    }
+}
+
+/**
+ * Cierra la página de detalle y vuelve al historial.
+ */
+function closeDetailPage() {
+    const detailPage = document.getElementById('page-detail');
+    detailPage.classList.add('translate-x-full');
     
-    recognition.onend = () => {
-        console.log('SpeechRecognition detenido.');
-        const statusEl = document.getElementById('recording-status');
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-            // Si la grabación sigue pero el reconocimiento paró (ej. por inactividad), reiniciarlo.
-             console.log('Reiniciando SpeechRecognition...');
-             if(recognition) recognition.start();
-        } else {
-            statusEl.textContent = 'Transcripción finalizada.';
-        }
-    };
+    // Detener reproductor de audio
+    const audioPlayer = document.getElementById('audio-player');
+    if (audioPlayer) {
+        audioPlayer.pause();
+        audioPlayer.src = ''; // Liberar el Object URL
+    }
+    
+    // Limpiar el ID
+    detailPage.dataset.currentMeetingId = '';
+    
+    // Refrescar la lista del historial
+    renderHistoryList();
+}
+
+/**
+ * Cambia la pestaña visible dentro de la página de detalle.
+ * @param {string} tabId - El ID de la pestaña a mostrar (ej: 'tab-summary').
+ */
+function navigateToTab(tabId) {
+    // Ocultar todos los contenidos de pestaña
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.add('hidden');
+    });
+    
+    // Quitar estado activo de botones de pestaña
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('active');
+    });
+
+    // Mostrar el contenido y botón activos
+    document.getElementById(tabId).classList.remove('hidden');
+    const activeButton = document.querySelector(`.tab-button[data-tab="${tabId}"]`);
+    if (activeButton) {
+        activeButton.classList.add('active');
+    }
+}
+/**
+ * Guarda el texto editado en la transcripción.
+ */
+async function saveTranscript() {
+    const meetingId = parseInt(document.getElementById('page-detail').dataset.currentMeetingId, 10);
+    const newText = document.getElementById('transcript-editor').value;
 
     try {
-        recognition.start();
-        console.log('Iniciando transcripción en vivo...');
-        document.getElementById('recording-status').textContent = 'Escuchando...';
+        const transcriptRecord = await dbGetByIndex(STORES.TRANSCRIPTS, 'meetingIdIndex', meetingId);
+        
+        if (transcriptRecord) {
+            transcriptRecord.text = newText;
+            transcriptRecord.source = 'manual'; // Marcar como editado manualmente
+            await dbPut(STORES.TRANSCRIPTS, transcriptRecord);
+        } else {
+            // Si no existía, crear uno nuevo
+            await dbAdd(STORES.TRANSCRIPTS, {
+                meetingId: meetingId,
+                language: 'es-ES',
+                text: newText,
+                source: 'manual'
+            });
+        }
+        
+        // Actualizar estado de la reunión
+        const meeting = await dbGet(STORES.MEETINGS, meetingId);
+        if (meeting.status === 'recorded' && newText.trim().length > 0) {
+            meeting.status = 'transcribed';
+            await dbPut(STORES.MEETINGS, meeting);
+        }
+        
+        // Volver a cargar la página de detalle para reflejar cambios
+        await openDetailPage(meetingId);
+        
+        showAlert("Éxito", "Transcripción guardada correctamente.");
+
     } catch (error) {
-        console.error('Error al iniciar SpeechRecognition:', error);
-    }
-}
-
-/**
- * Detiene la API de SpeechRecognition
- */
-function stopLiveTranscription() {
-    if (recognition) {
-        recognition.stop();
-        recognition = null;
+        console.error("Error al guardar transcripción:", error);
+        showAlert("Error", "No se pudo guardar la transcripción.");
     }
 }
 
 
-// --- LÓGICA DE LA IA (GEMINI) ---
+// ----------------------------------
+// LÓGICA DE IA (GEMINI)
+// ----------------------------------
 
 /**
- * Botón principal para procesar la reunión con IA
+ * Inicia el proceso de IA (transcripción + resumen).
  */
 async function processMeetingWithAI() {
-    const meetingId = this.dataset.meetingId;
-    const aiErrorMsg = document.getElementById('ai-error-message');
-    const generateButton = document.getElementById('generate-ai-summary-button');
-    const summaryEmptyState = document.getElementById('summary-empty-state');
-    const summaryLoadingState = document.getElementById('summary-loading-state');
-    const summaryContent = document.getElementById('summary-content');
-
-    aiErrorMsg.textContent = '';
-
-    // 1. Validar API Key
-    if (!GEMINI_API_KEY) {
-        aiErrorMsg.textContent = 'La clave API de Gemini no está configurada.';
-        showAlertModal("Error de Configuración", "La clave API de Gemini no está configurada en el código. No se puede procesar la IA.");
+    const meetingId = parseInt(document.getElementById('page-detail').dataset.currentMeetingId, 10);
+    
+    // Verificar API Key
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === "") {
+        showAlert('Error de Configuración', 'La clave API de Gemini no está configurada en el código. No se puede procesar la IA.');
         return;
     }
 
-    // 2. Obtener la transcripción
-    const meeting = await dbGet(STORES.MEETINGS, meetingId);
-    let transcriptText = meeting.transcript;
-
-    // Si la transcripción está vacía (no se grabó en vivo o falló), intentar obtenerla del store de transcripciones (edición manual)
-    if (!transcriptText || transcriptText.trim() === '') {
-        const manualTranscript = await dbGet(STORES.TRANSCRIPTS, meetingId);
-        if (manualTranscript && manualTranscript.text) {
-            transcriptText = manualTranscript.text;
-        }
-    }
-
-    // 3. Validar transcripción
-    if (!transcriptText || transcriptText.trim() === '') {
-        aiErrorMsg.textContent = 'La transcripción está vacía. Ve a la pestaña "Transcripción" y añade el texto manualmente.';
-        return;
-    }
-
-    // 4. Actualizar UI a estado de "Cargando"
-    summaryEmptyState.classList.add('hidden');
-    summaryLoadingState.classList.remove('hidden');
-    generateButton.disabled = true;
+    // Mostrar spinner en el botón
+    const aiButton = document.getElementById('process-ai-button');
+    const aiButtonText = document.getElementById('ai-button-text');
+    const aiButtonSpinner = document.getElementById('ai-button-spinner');
+    
+    aiButton.disabled = true;
+    aiButtonText.textContent = "Procesando con IA...";
+    aiButtonSpinner.classList.remove('hidden');
 
     try {
-        // 5. Llamar a Gemini
+        // 1. Obtener la transcripción de la BD
+        const transcriptRecord = await dbGetByIndex(STORES.TRANSCRIPTS, 'meetingIdIndex', meetingId);
+        
+        if (!transcriptRecord || !transcriptRecord.text || transcriptRecord.text.trim().length === 0) {
+            showAlert("Error de IA", "No hay transcripción disponible para resumir. Por favor, edítala manualmente primero.");
+            throw new Error("Transcripción vacía");
+        }
+        
+        const transcriptText = transcriptRecord.text;
+        
+        // 2. Obtener metadatos de la reunión para el prompt
+        const meeting = await dbGet(STORES.MEETINGS, meetingId);
+        
+        // 3. Llamar a Gemini
         const summaryData = await getGeminiSummary(transcriptText, meeting);
         
-        // 6. Guardar los resultados
-        await saveAISummary(meetingId, summaryData);
-
-        // 7. Renderizar el resumen
-        renderSummaryInModal(summaryData);
-        summaryLoadingState.classList.add('hidden');
-        summaryContent.classList.remove('hidden');
+        // 4. Guardar los resultados en la BD
         
-        // 8. Actualizar estado de la reunión
-        meeting.aiStatus = 'done';
+        // 4a. Guardar el Resumen/Minuta
+        const summaryRecord = {
+            meetingId: meetingId,
+            data: summaryData // Guardar el JSON completo
+        };
+        await dbAdd(STORES.SUMMARIES, summaryRecord);
+        console.log("Minuta de IA guardada.");
+
+        // 4b. Guardar las Tareas (Action Items)
+        if (summaryData.plan_de_accion && summaryData.plan_de_accion.length > 0) {
+            for (const item of summaryData.plan_de_accion) {
+                const actionItem = {
+                    meetingId: meetingId,
+                    title: item.tarea || "Tarea sin título",
+                    assignee: item.responsable || "Por definir",
+                    dueDate: item.fecha_limite || null,
+                    priority: item.prioridad || "Media",
+                    status: item.estado || "Pendiente"
+                };
+                await dbAdd(STORES.ACTION_ITEMS, actionItem);
+            }
+            console.log(`${summaryData.plan_de_accion.length} tareas guardadas.`);
+        }
+        
+        // 5. Actualizar estado de la reunión
+        meeting.status = 'summarized';
         await dbPut(STORES.MEETINGS, meeting);
         
-        // 9. Actualizar el Dashboard
-        renderDashboard();
+        // 6. Recargar la página de detalle para mostrar la minuta
+        await openDetailPage(meetingId);
+        
+        // Ocultar spinner
+        aiButtonText.textContent = "Minuta Generada (Completo)";
+        aiButtonSpinner.classList.add('hidden');
+        // aiButton.disabled = true; // Ya se deshabilita en openDetailPage
 
     } catch (error) {
-        console.error('Error al procesar con Gemini:', error);
-        aiErrorMsg.textContent = `Error de la API: ${error.message}`;
-        summaryLoadingState.classList.add('hidden');
-        summaryEmptyState.classList.remove('hidden');
-    } finally {
-        generateButton.disabled = false;
+        console.error("Error en el proceso de IA:", error);
+        showAlert("Error de IA", `No se pudo completar el proceso: ${error.message}`);
+        
+        // Restaurar botón en caso de error
+        aiButton.disabled = false;
+        aiButtonText.textContent = "Generar Resumen (IA)";
+        aiButtonSpinner.classList.add('hidden');
     }
 }
-
 /**
- * Llama a la API de Gemini para obtener el resumen estructurado
+ * Llama a la API de Gemini para obtener el resumen estructurado.
+ * @param {string} transcriptText - El texto de la transcripción.
+ * @param {object} meeting - El objeto de la reunión.
+ * @returns {Promise<object>} - El JSON con la minuta.
  */
 async function getGeminiSummary(transcriptText, meeting) {
-    console.log("Enviando transcripción a Gemini...");
+    console.log("Llamando a la API de Gemini...");
 
+    // Definir el Schema para la respuesta JSON
     const schema = {
         type: "OBJECT",
         properties: {
@@ -453,13 +986,17 @@ async function getGeminiSummary(transcriptText, meeting) {
                 "items": {
                     "type": "OBJECT",
                     "properties": {
-                        "nombre": { "type": "STRING" },
-                        "aportes": { "type": "STRING" }
+                        "nombre": { "type": "STRING", "description": "Nombre del participante (o 'Varios' si no está claro)." },
+                        "aportes": { "type": "STRING", "description": "Resumen de sus aportes clave." }
                     },
                     "required": ["nombre", "aportes"]
                 }
             },
-            "puntos_relevantes": { "type": "ARRAY", "items": { "type": "STRING" } },
+            "puntos_relevantes": {
+                "type": "ARRAY",
+                "items": { "type": "STRING" },
+                "description": "Lista de 3-5 puntos clave discutidos."
+            },
             "plan_de_accion": {
                 "type": "ARRAY",
                 "items": {
@@ -467,21 +1004,27 @@ async function getGeminiSummary(transcriptText, meeting) {
                     "properties": {
                         "tarea": { "type": "STRING" },
                         "responsable": { "type": "STRING" },
-                        "fecha_limite": { "type": "STRING", "description": "Formato AAAA-MM-DD o 'Por definir'" },
-                        "prioridad": { "type": "STRING", "enum": ["Alta", "Media", "Baja"] },
-                        "estado": { "type": "STRING", "default": "Pendiente" }
+                        "fecha_limite": { "type": "STRING", "description": "Formato AAAA-MM-DD o 'Por definir'." },
+                        "prioridad": { "type": "STRING", "description": "Alta, Media, o Baja." },
+                        "estado": { "type": "STRING", "description": "Pendiente, En curso, o Hecha." }
                     },
-                    "required": ["tarea", "responsable", "fecha_limite", "prioridad"]
+                    "required": ["tarea", "responsable", "fecha_limite", "prioridad", "estado"]
                 }
             },
-            "temas": { "type": "ARRAY", "items": { "type": "STRING" } }
+            "temas": {
+                "type": "ARRAY",
+                "items": { "type": "STRING" },
+                "description": "Lista de 5-10 temas o keywords para etiquetado."
+            }
         },
         required: ["titulo", "fecha", "hora", "resumen_general", "objetivo_general", "desarrollo_por_participante", "puntos_relevantes", "plan_de_accion", "temas"]
     };
 
     const systemPrompt = `Eres un asistente experto que sintetiza reuniones en español a partir de una transcripción.
-Tu objetivo es devolver SIEMPRE un único objeto JSON válido que se adhiera estrictamente al esquema proporcionado.
-Usa la fecha ${new Date(meeting.startAt).toISOString().split('T')[0]} y la hora ${new Date(meeting.startAt).toTimeString().substr(0,5)} - ${new Date(meeting.endAt).toTimeString().substr(0,5)}.
+Tu objetivo es devolver SIEMPRE un único objeto JSON válido que se adhiera estrictamente al schema proporcionado.
+La fecha de la reunión es: ${new Date(meeting.startAt).toISOString().split('T')[0]}.
+La hora de inicio fue ${new Date(meeting.startAt).toTimeString().substr(0,5)} y la de fin ${new Date(meeting.endAt).toTimeString().substr(0,5)}.
+Usa esa información para los campos 'fecha' y 'hora'.
 Considera el idioma detectado, corrige errores de transcripción y conserva cifras/fechas/textos literales críticos.
 Si hay ambigüedades en la transcripción sobre un punto, marca ese punto con "TODO: verificar".
 La transcripción es:
@@ -493,255 +1036,101 @@ ${transcriptText}`;
         ],
         generationConfig: {
             responseMimeType: "application/json",
-            responseSchema: schema,
-            temperature: 0.3,
-        },
+            responseSchema: schema
+        }
     };
 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`;
-
-    const response = await fetch(apiUrl, {
+    const response = await fetch(GEMINI_API_URL, {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(`Error de la API de Gemini: ${response.status} ${response.statusText} - ${errorBody}`);
+        console.error("Error en la API de Gemini:", response.status, errorBody);
+        throw new Error(`Error ${response.status} de la API de Gemini.`);
     }
 
     const result = await response.json();
     
-    if (result.candidates && result.candidates.length > 0 &&
-        result.candidates[0].content && result.candidates[0].content.parts &&
-        result.candidates[0].content.parts.length > 0) {
-        
-        try {
-            const jsonText = result.candidates[0].content.parts[0].text;
-            const parsedJson = JSON.parse(jsonText);
-            return parsedJson;
-        } catch (e) {
-            console.error("Error al parsear el JSON de la respuesta de Gemini:", e);
-            console.error("Respuesta de Gemini (texto):", result.candidates[0].content.parts[0].text);
-            throw new Error("La API de IA devolvió un JSON inválido.");
-        }
-    } else {
-        throw new Error("Respuesta de la API de IA inesperada o vacía.");
+    // Extraer el texto JSON de la respuesta
+    try {
+        const jsonText = result.candidates[0].content.parts[0].text;
+        return JSON.parse(jsonText);
+    } catch (e) {
+        console.error("Error al parsear la respuesta JSON de Gemini:", e, result);
+        throw new Error("La respuesta de la IA no fue un JSON válido.");
     }
 }
 
-/**
- * Guarda el resumen y las tareas de acción en IndexedDB
- */
-async function saveAISummary(meetingId, summaryData) {
-    // 1. Guardar el resumen principal
-    const summaryRecord = {
-        meetingId: meetingId,
-        data: summaryData,
-        createdAt: new Date().toISOString()
-    };
-    await dbPut(STORES.SUMMARIES, summaryRecord);
 
-    // 2. Borrar tareas antiguas de esta reunión (si existen)
-    const allTasks = await dbGetAll(STORES.ACTION_ITEMS);
-    const oldTasks = allTasks.filter(task => task.meetingId === meetingId);
-    for (const task of oldTasks) {
-        await dbDelete(STORES.ACTION_ITEMS, task.id);
-    }
-
-    // 3. Guardar las nuevas tareas
-    if (summaryData.plan_de_accion && summaryData.plan_de_accion.length > 0) {
-        for (const item of summaryData.plan_de_accion) {
-            const newTask = {
-                id: `task_${meetingId}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-                meetingId: meetingId,
-                title: item.tarea,
-                assignee: item.responsable,
-                dueDate: item.fecha_limite,
-                priority: item.prioridad,
-                status: item.estado || 'Pendiente', // 'Pendiente', 'En curso', 'Hecha'
-                createdAt: new Date().toISOString()
-            };
-            await dbAdd(STORES.ACTION_ITEMS, newTask);
-        }
-    }
-    console.log(`Resumen y ${summaryData.plan_de_accion.length} tareas guardadas para ${meetingId}`);
-}
-
-
-// --- LÓGICA DE UI (HISTORIAL, MODAL, DASHBOARD) ---
+// ----------------------------------
+// LÓGICA DEL DASHBOARD
+// ----------------------------------
 
 /**
- * Actualiza la UI del botón de grabación y el temporizador
- */
-function updateRecordingUI(isRecording) {
-    const recordButton = document.getElementById('record-button');
-    const recordIconMic = document.getElementById('record-icon-mic');
-    const recordIconStop = document.getElementById('record-icon-stop');
-    const recordRing = document.getElementById('record-ring');
-    const recordDot = document.getElementById('record-dot');
-    const timerDisplay = document.getElementById('timer-display');
-    const recordingStatus = document.getElementById('recording-status');
-
-    if (isRecording) {
-        recordButton.classList.add('bg-red-700');
-        recordButton.classList.remove('bg-gray-700');
-        recordIconMic.classList.add('hidden');
-        recordIconStop.classList.remove('hidden');
-        recordRing.classList.remove('hidden');
-        recordDot.classList.remove('hidden');
-        // El estado de grabación (Escuchando... Transcribiendo...) lo maneja 'startLiveTranscription'
-    } else {
-        recordButton.classList.remove('bg-red-700');
-        recordButton.classList.add('bg-gray-700');
-        recordIconMic.classList.remove('hidden');
-        recordIconStop.classList.add('hidden');
-        recordRing.classList.add('hidden');
-        recordDot.classList.add('hidden');
-        timerDisplay.textContent = '00:00:00';
-        recordingStatus.textContent = 'Grabación guardada.';
-        setTimeout(() => { recordingStatus.textContent = ''; }, 3000);
-    }
-}
-
-/**
- * Inicia el temporizador de grabación
- */
-function startTimer() {
-    const timerDisplay = document.getElementById('timer-display');
-    timerInterval = setInterval(() => {
-        const elapsed = new Date(new Date() - recordingStartTime);
-        const hours = String(elapsed.getUTCHours()).padStart(2, '0');
-        const minutes = String(elapsed.getUTCMinutes()).padStart(2, '0');
-        const seconds = String(elapsed.getUTCSeconds()).padStart(2, '0');
-        timerDisplay.textContent = `${hours}:${minutes}:${seconds}`;
-    }, 1000);
-}
-
-/**
- * Detiene el temporizador de grabación
- */
-function stopTimer() {
-    clearInterval(timerInterval);
-}
-
-/**
- * Renderiza la lista de reuniones en el historial
- */
-async function renderHistoryList() {
-    const meetings = await dbGetAll(STORES.MEETINGS);
-    meetings.sort((a, b) => new Date(b.startAt) - new Date(a.startAt)); // Más recientes primero
-
-    const listUl = document.getElementById('history-list');
-    const emptyState = document.getElementById('history-empty-state');
-    const searchTerm = document.getElementById('search-history').value.toLowerCase();
-
-    // Filtrar por búsqueda
-    const filteredMeetings = meetings.filter(meeting => 
-        meeting.title.toLowerCase().includes(searchTerm) ||
-        (meeting.tags && meeting.tags.some(tag => tag.toLowerCase().includes(searchTerm))) ||
-        (meeting.transcript && meeting.transcript.toLowerCase().includes(searchTerm)) // Buscar en transcripción
-    );
-
-    if (filteredMeetings.length === 0) {
-        listUl.innerHTML = '';
-        emptyState.classList.remove('hidden');
-        return;
-    }
-
-    emptyState.classList.add('hidden');
-    listUl.innerHTML = filteredMeetings.map(meeting => {
-        const startDate = new Date(meeting.startAt);
-        const durationMs = meeting.duration;
-        const durationSec = Math.floor((durationMs / 1000) % 60);
-        const durationMin = Math.floor((durationMs / (1000 * 60)) % 60);
-        const durationHr = Math.floor(durationMs / (1000 * 60 * 60));
-
-        const durationString = [
-            durationHr > 0 ? `${durationHr}h` : null,
-            durationMin > 0 ? `${durationMin}m` : null,
-            `${durationSec}s`
-        ].filter(Boolean).join(' ');
-
-        const tagsHtml = (meeting.tags || [])
-            .map(tag => `<span class="px-2 py-0.5 bg-cyan-700 text-cyan-100 text-xs font-medium rounded-full">${tag}</span>`)
-            .join('');
-        
-        let statusHtml = '';
-        if (meeting.aiStatus === 'pending') {
-            statusHtml = `<div class="mt-3 text-xs text-yellow-400">Pendiente de IA</div>`;
-        } else if (meeting.aiStatus === 'done') {
-            statusHtml = `<div class="mt-3 text-xs text-green-400">Minuta Generada</div>`;
-        }
-
-        return `
-            <li class="bg-gray-800 p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-700 transition-colors duration-200" data-meeting-id="${meeting.id}">
-                <h3 class="text-lg font-semibold text-white">${meeting.title}</h3>
-                <p class="text-sm text-gray-400">${startDate.toLocaleString()}  •  ${durationString}</p>
-                <div class="mt-3 flex flex-wrap gap-2">${tagsHtml}</div>
-                ${statusHtml}
-            </li>
-        `;
-    }).join('');
-
-    // Agregar listeners a los nuevos items de la lista
-    listUl.querySelectorAll('li').forEach(item => {
-        item.addEventListener('click', () => openMeetingDetailModal(item.dataset.meetingId));
-    });
-}
-
-/**
- * Renderiza el dashboard con KPIs
+ * Carga y renderiza los datos del Dashboard.
  */
 async function renderDashboard() {
-    const allMeetings = await dbGetAll(STORES.MEETINGS);
-    const allSummaries = await dbGetAll(STORES.SUMMARIES);
-    const allActionItems = await dbGetAll(STORES.ACTION_ITEMS);
+    try {
+        const allMeetings = await dbGetAll(STORES.MEETINGS);
+        const allActionItems = await dbGetAll(STORES.ACTION_ITEMS);
+        const allSummaries = await dbGetAll(STORES.SUMMARIES);
+        
+        // Filtrar por el último mes (simple)
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+        
+        const meetingsThisMonth = allMeetings.filter(m => new Date(m.startAt) >= oneMonthAgo);
 
-    // KPI: Tiempo Total
-    const meetingsLast30Days = allMeetings.filter(m => {
-        const meetingDate = new Date(m.startAt);
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        return meetingDate > thirtyDaysAgo;
-    });
-    const totalMs = meetingsLast30Days.reduce((acc, m) => acc + m.duration, 0);
-    const totalHours = Math.floor(totalMs / (1000 * 60 * 60));
-    const totalMinutes = Math.floor((totalMs % (1000 * 60 * 60)) / (1000 * 60));
-    document.getElementById('kpi-total-time').textContent = `${totalHours}h ${totalMinutes}m`;
+        // KPI 1: Tiempo Total
+        const totalMs = meetingsThisMonth.reduce((acc, m) => acc + m.duration, 0);
+        const totalMinutes = Math.floor(totalMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        document.getElementById('kpi-total-time').textContent = `${hours}h ${minutes}m`;
 
-    // KPI: Tareas Abiertas
-    const openTasks = allActionItems.filter(t => t.status !== 'Hecha');
-    document.getElementById('kpi-open-tasks').textContent = openTasks.length;
+        // KPI 2: Reuniones Totales
+        document.getElementById('kpi-total-meetings').textContent = meetingsThisMonth.length;
+        
+        // KPI 3: Tareas Abiertas
+        const openTasks = allActionItems.filter(t => t.status !== 'Hecha');
+        document.getElementById('kpi-open-tasks').textContent = openTasks.length;
+        
+        // KPI 4: % Con Plan de Acción
+        const meetingsWithSummaries = allSummaries.length;
+        const meetingsWithActions = allSummaries.filter(s => s.data.plan_de_accion && s.data.plan_de_accion.length > 0).length;
+        const pct = (meetingsWithSummaries === 0) ? 0 : Math.round((meetingsWithActions / meetingsWithSummaries) * 100);
+        document.getElementById('kpi-action-items-pct').textContent = `${pct}%`;
 
-    // KPI: % con Plan de Acción
-    const meetingsWithSummaries = allSummaries.length;
-    const meetingsWithActions = allSummaries.filter(s => s.data.plan_de_accion && s.data.plan_de_accion.length > 0).length;
-    const pctWithActions = allMeetings.length > 0 ? Math.round((meetingsWithActions / allMeetings.length) * 100) : 0;
-    document.getElementById('kpi-meetings-with-actions').textContent = `${pctWithActions}%`;
+        // Renderizar lista de Tareas Abiertas
+        renderOpenTasks(openTasks);
 
-    // KPI: Efectividad (Simulado, ya que la fórmula es compleja)
-    // En un futuro, se calcularía según la fórmula del doc.
-    document.getElementById('kpi-avg-effectiveness').textContent = 'N/A';
-    
-    // Renderizar lista de Tareas Abiertas
-    renderOpenTasks(openTasks);
-
-    // Renderizar Temas Frecuentes
-    renderFrequentTopics(allSummaries);
+    } catch (error) {
+        console.error("Error al renderizar el dashboard:", error);
+    }
 }
 
 /**
- * Muestra las tareas abiertas en el dashboard
+ * Renderiza la lista de tareas abiertas en el Dashboard.
+ * @param {object[]} openTasks - Array de tareas con estado != 'Hecha'.
  */
 function renderOpenTasks(openTasks) {
     const tasksList = document.getElementById('tasks-list');
     const tasksEmptyState = document.getElementById('tasks-empty-state');
     
-    const tasksToShow = openTasks.slice(0, 10); // Limitar a 10
+    // Ordenar: más urgentes (fecha límite más cercana) primero
+    openTasks.sort((a, b) => {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate) - new Date(b.dueDate);
+    });
+    
+    // Limitar a 10
+    const tasksToShow = openTasks.slice(0, 10);
     
     if (tasksToShow.length === 0) {
         tasksEmptyState.classList.remove('hidden');
@@ -751,558 +1140,248 @@ function renderOpenTasks(openTasks) {
     
     tasksEmptyState.classList.add('hidden');
     tasksList.innerHTML = tasksToShow.map(task => {
-        let priorityClass = 'bg-gray-500';
-        if (task.priority === 'Alta') priorityClass = 'bg-red-600';
-        if (task.priority === 'Media') priorityClass = 'bg-yellow-600';
-        if (task.priority === 'Baja') priorityClass = 'bg-green-600';
+        const dueDate = task.dueDate ? new Date(task.dueDate).toLocaleDateString('es-ES') : 'Sin fecha';
         
+        let priorityColor = 'text-yellow-400'; // Media (default)
+        if (task.priority === 'Alta') priorityColor = 'text-red-400';
+        if (task.priority === 'Baja') priorityColor = 'text-green-400';
+
         return `
             <li class="bg-gray-800 p-3 rounded-lg flex items-center justify-between">
                 <div>
                     <p class="text-white">${task.title}</p>
-                    <p class="text-xs text-gray-400">Resp: ${task.assignee} | Límite: ${task.dueDate}</p>
+                    <p class="text-sm text-gray-400">
+                        <span class="${priorityColor}">● ${task.priority}</span> | Vence: ${dueDate}
+                    </p>
                 </div>
-                <span class="px-2 py-0.5 ${priorityClass} text-white text-xs font-medium rounded-full">${task.priority}</span>
+                <span class="text-sm text-gray-500">${task.assignee}</span>
             </li>
         `;
     }).join('');
 }
 
-/**
- * Muestra los temas frecuentes en el dashboard
- */
-function renderFrequentTopics(allSummaries) {
-    const topicsList = document.getElementById('topics-list');
-    const topicsEmptyState = document.getElementById('topics-empty-state');
-    
-    const topicCounts = {};
-    allSummaries.forEach(summary => {
-        if (summary.data.temas) {
-            summary.data.temas.forEach(topic => {
-                topicCounts[topic] = (topicCounts[topic] || 0) + 1;
-            });
-        }
-    });
-    
-    const sortedTopics = Object.entries(topicCounts).sort((a, b) => b[1] - a[1]).slice(0, 10); // Top 10
 
-    if (sortedTopics.length === 0) {
-        topicsEmptyState.classList.remove('hidden');
-        topicsList.innerHTML = '';
+// ----------------------------------
+// FUNCIONES AUXILIARES (Helpers)
+// ----------------------------------
+
+/**
+ * Formatea segundos a un string "HH:MM:SS" o "MM:SS".
+ * @param {number} totalSeconds - El total de segundos.
+ * @returns {string} - El tiempo formateado.
+ */
+function formatTime(totalSeconds) {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const pad = (num) => num.toString().padStart(2, '0');
+
+    if (hours > 0) {
+        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    } else {
+        return `${pad(minutes)}:${pad(seconds)}`;
+    }
+}
+
+/**
+ * Retorna clases de color y etiqueta para un estado de reunión.
+ * @param {string} status - El estado (recorded, transcribed, summarized).
+ * @returns {object} { label, bg, text }
+ */
+function getStatusColor(status) {
+    switch (status) {
+        case 'summarized':
+            return { label: 'Minuta OK', bg: 'bg-green-200', text: 'text-green-900' };
+        case 'transcribed':
+            return { label: 'Transcrito', bg: 'bg-blue-200', text: 'text-blue-900' };
+        case 'recorded':
+        default:
+            return { label: 'Grabado', bg: 'bg-yellow-200', text: 'text-yellow-900' };
+    }
+}
+
+/**
+ * Convierte el JSON de la minuta de IA en HTML legible.
+ * @param {object} data - El objeto JSON de la minuta.
+ * @returns {string} - HTML.
+ */
+function formatSummaryToHTML(data) {
+    if (!data) return "<p>Error: Datos de minuta no encontrados.</p>";
+    
+    let html = '';
+
+    if (data.resumen_general) {
+        html += `<div class="mb-4"><h3 class="text-lg font-semibold text-cyan-400 mb-2">Resumen General</h3><p class="text-gray-300 bg-gray-800 p-3 rounded-lg">${data.resumen_general}</p></div>`;
+    }
+    if (data.objetivo_general) {
+        html += `<div class="mb-4"><h3 class="text-lg font-semibold text-cyan-400 mb-2">Objetivo General</h3><p class="text-gray-300 bg-gray-800 p-3 rounded-lg">${data.objetivo_general}</p></div>`;
+    }
+    
+    if (data.puntos_relevantes && data.puntos_relevantes.length > 0) {
+        html += `<div class="mb-4"><h3 class="text-lg font-semibold text-cyan-400 mb-2">Puntos Relevantes</h3><ul class="list-disc list-inside bg-gray-800 p-3 rounded-lg text-gray-300 space-y-1">`;
+        data.puntos_relevantes.forEach(point => {
+            html += `<li>${point}</li>`;
+        });
+        html += `</ul></div>`;
+    }
+    
+    if (data.desarrollo_por_participante && data.desarrollo_por_participante.length > 0) {
+        html += `<div class="mb-4"><h3 class="text-lg font-semibold text-cyan-400 mb-2">Desarrollo por Participante</h3><div class="space-y-2">`;
+        data.desarrollo_por_participante.forEach(p => {
+            html += `<div class="bg-gray-800 p-3 rounded-lg"><strong class="text-white">${p.nombre}:</strong><p class="text-gray-300">${p.aportes}</p></div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    if (data.plan_de_accion && data.plan_de_accion.length > 0) {
+        html += `<div class="mb-4"><h3 class="text-lg font-semibold text-cyan-400 mb-2">Plan de Acción</h3><div class="overflow-x-auto"><table class="w-full min-w-max bg-gray-800 rounded-lg"><thead><tr class="bg-gray-700">`;
+        html += `<th class="p-2 text-left text-sm font-semibold text-gray-300">Tarea</th><th class="p-2 text-left text-sm font-semibold text-gray-300">Responsable</th><th class="p-2 text-left text-sm font-semibold text-gray-300">Fecha Límite</th>`;
+        html += `</tr></thead><tbody class="text-gray-300">`;
+        data.plan_de_accion.forEach(task => {
+            html += `<tr class="border-t border-gray-700"><td class="p-2">${task.tarea}</td><td class="p-2">${task.responsable}</td><td class="p-2">${task.fecha_limite}</td></tr>`;
+        });
+        html += `</tbody></table></div></div>`;
+    }
+    
+    if (data.temas && data.temas.length > 0) {
+        html += `<div class="mb-4"><h3 class="text-lg font-semibold text-cyan-400 mb-2">Temas Clave</h3><div class="flex flex-wrap gap-2 bg-gray-800 p-3 rounded-lg">`;
+        data.temas.forEach(topic => {
+            html += `<span class="px-2 py-1 bg-gray-700 text-cyan-300 rounded-full text-sm">${topic}</span>`;
+        });
+        html += `</div></div>`;
+    }
+
+    return html;
+}
+
+
+// ----------------------------------
+// EVENT LISTENERS (Inicialización)
+// ----------------------------------
+
+/**
+ * Inicializa la aplicación completa.
+ */
+async function initApp() {
+    // 1. Inicializar la Base de Datos primero
+    try {
+        await initDB();
+    } catch (error) {
+        console.error("Fallo crítico: No se pudo iniciar la BD.", error);
+        showAlert("Error Crítico", "No se pudo iniciar la base de datos local. La aplicación no puede funcionar.");
         return;
     }
 
-    topicsEmptyState.classList.add('hidden');
-    topicsList.innerHTML = sortedTopics.map(([topic, count]) => {
-        return `<span class="px-3 py-1 bg-cyan-700 text-cyan-100 text-sm rounded-full">${topic} (${count})</span>`;
-    }).join('');
-}
+    // 2. Configurar Listeners de PWA
+    registerServiceWorker();
+    window.addEventListener('beforeinstallprompt', setupInstallPrompt);
 
-
-// --- LÓGICA DEL MODAL (ABRIR, CERRAR, POBLAR) ---
-
-/**
- * Abre el modal de detalle y carga sus datos
- */
-async function openMeetingDetailModal(meetingId) {
-    const modal = document.getElementById('meeting-detail-modal');
-    const backdrop = document.getElementById('modal-backdrop');
-    
-    // Guardar el ID en el modal para referencia
-    modal.dataset.currentMeetingId = meetingId;
-    
-    // Resetear estado del modal
-    resetModalViews();
-    
-    // Cargar datos
-    const meeting = await dbGet(STORES.MEETINGS, meetingId);
-    
-    // Pestaña Acciones (Metadatos)
-    document.getElementById('modal-edit-title').value = meeting.title;
-    document.getElementById('modal-edit-tags').value = (meeting.tags || []).join(', ');
-    
-    // Pestaña Acciones (Reproductor de audio)
-    const audioPlayerContainer = document.getElementById('modal-audio-player-container');
-    const audioPlayer = document.getElementById('modal-audio-player');
-    if (meeting.audioBlob) {
-        const audioUrl = URL.createObjectURL(meeting.audioBlob);
-        audioPlayer.src = audioUrl;
-        audioPlayerContainer.classList.remove('hidden');
-        audioPlayer.onended = () => URL.revokeObjectURL(audioUrl);
-    } else {
-        audioPlayerContainer.classList.add('hidden');
-    }
-
-    // Pestaña Acciones (Botones)
-    document.getElementById('modal-save-metadata-button').dataset.meetingId = meetingId;
-    document.getElementById('modal-delete-button').dataset.meetingId = meetingId;
-    document.getElementById('generate-ai-summary-button').dataset.meetingId = meetingId;
-    document.getElementById('modal-export-json-button').dataset.meetingId = meetingId;
-
-    // Pestaña Transcripción
-    await renderTranscriptInModal(meetingId, meeting.transcript);
-    
-    // Pestaña Resumen/Minuta
-    const summary = await dbGet(STORES.SUMMARIES, meetingId);
-    if (summary) {
-        renderSummaryInModal(summary.data);
-        document.getElementById('summary-empty-state').classList.add('hidden');
-        document.getElementById('summary-loading-state').classList.add('hidden');
-        document.getElementById('summary-content').classList.remove('hidden');
-    } else {
-        // Estado vacío, listo para generar
-        document.getElementById('summary-empty-state').classList.remove('hidden');
-        document.getElementById('summary-loading-state').classList.add('hidden');
-        document.getElementById('summary-content').classList.add('hidden');
-    }
-
-    // Mostrar modal
-    modal.classList.add('active');
-    backdrop.classList.add('active');
-}
-
-/**
- * Cierra el modal de detalle
- */
-function closeMeetingDetailModal() {
-    const modal = document.getElementById('meeting-detail-modal');
-    const backdrop = document.getElementById('modal-backdrop');
-    
-    // Detener audio si se está reproduciendo
-    const audioPlayer = document.getElementById('modal-audio-player');
-    audioPlayer.pause();
-    audioPlayer.src = '';
-    
-    modal.classList.remove('active');
-    backdrop.classList.remove('active');
-    modal.dataset.currentMeetingId = '';
-}
-
-/**
- * Resetea las vistas del modal a su estado por defecto
- */
-function resetModalViews() {
-    // Pestañas
-    document.querySelectorAll('.modal-tab-button').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.modal-tab-content').forEach(content => content.classList.remove('active'));
-    document.querySelector('.modal-tab-button[data-tab="summary"]').classList.add('active');
-    document.getElementById('modal-tab-summary').classList.add('active');
-    
-    // Estado de IA
-    document.getElementById('summary-empty-state').classList.add('hidden');
-    document.getElementById('summary-loading-state').classList.add('hidden');
-    document.getElementById('summary-content').classList.add('hidden');
-    document.getElementById('ai-error-message').textContent = '';
-
-    // Transcripción
-    document.getElementById('transcript-editor-container').classList.add('hidden');
-    document.getElementById('transcript-status-message').classList.add('hidden');
-    document.getElementById('save-transcript-button').classList.add('hidden');
-}
-
-/**
- * Muestra el resumen de IA en el modal
- */
-function renderSummaryInModal(summaryData) {
-    document.getElementById('summary-overview').textContent = summaryData.resumen_general;
-    document.getElementById('summary-objective').textContent = summaryData.objetivo_general;
-    
-    document.getElementById('summary-participants').innerHTML = summaryData.desarrollo_por_participante
-        .map(p => `<li><strong>${p.nombre}:</strong> ${p.aportes}</li>`)
-        .join('');
-    
-    document.getElementById('summary-keypoints').innerHTML = summaryData.puntos_relevantes
-        .map(p => `<li>${p}</li>`)
-        .join('');
-    
-    document.getElementById('summary-actionplan').innerHTML = summaryData.plan_de_accion
-        .map(task => `
-            <div class="p-2 bg-gray-700 rounded-md">
-                <p><strong>Tarea:</strong> ${task.tarea}</p>
-                <p class="text-sm"><strong>Resp:</strong> ${task.responsable} | <strong>Límite:</strong> ${task.fecha_limite} | <strong>Prio:</strong> ${task.prioridad}</p>
-            </div>
-        `)
-        .join('');
-        
-    document.getElementById('summary-topics').innerHTML = summaryData.temas
-        .map(topic => `<span class="px-2 py-0.5 bg-cyan-700 text-cyan-100 text-xs font-medium rounded-full">${topic}</span>`)
-        .join('');
-}
-
-/**
- * Muestra la transcripción en el modal
- */
-async function renderTranscriptInModal(meetingId, liveTranscript) {
-    const editorContainer = document.getElementById('transcript-editor-container');
-    const editor = document.getElementById('transcript-editor');
-    const statusMessage = document.getElementById('transcript-status-message');
-    const saveButton = document.getElementById('save-transcript-button');
-    
-    // 1. Intentar cargar una transcripción editada manualmente
-    const manualTranscript = await dbGet(STORES.TRANSCRIPTS, meetingId);
-    
-    let textToDisplay = '';
-    if (manualTranscript && manualTranscript.text) {
-        textToDisplay = manualTranscript.text;
-    } else if (liveTranscript) {
-        textToDisplay = liveTranscript;
-    }
-    
-    saveButton.dataset.meetingId = meetingId;
-    
-    if (textToDisplay.trim() !== '') {
-        editor.textContent = textToDisplay;
-        editorContainer.classList.remove('hidden');
-        saveButton.classList.remove('hidden');
-        statusMessage.classList.add('hidden');
-    } else {
-        editor.textContent = '';
-        editorContainer.classList.add('hidden');
-        saveButton.classList.add('hidden');
-        statusMessage.textContent = 'La transcripción en vivo no grabó texto o no es soportada. Puedes añadir el texto manualmente aquí.';
-        statusMessage.classList.remove('hidden');
-        
-        // Habilitar el editor aunque esté vacío para añadir manually
-        editorContainer.classList.remove('hidden');
-        saveButton.classList.remove('hidden'); // Mostrar botón de guardar
-    }
-}
-
-/**
- * Guarda los cambios manuales de la transcripción
- */
-async function saveTranscriptChanges() {
-    const meetingId = this.dataset.meetingId;
-    const newText = document.getElementById('transcript-editor').textContent;
-    
-    const transcriptRecord = {
-        meetingId: meetingId,
-        text: newText,
-        updatedAt: new Date().toISOString()
-    };
-    
-    try {
-        await dbPut(STORES.TRANSCRIPTS, transcriptRecord);
-        // Opcional: mostrar un mensaje de "Guardado"
-        console.log('Transcripción manual guardada');
-        
-        // También actualizar el registro principal de la reunión (opcional pero bueno para IA)
-        const meeting = await dbGet(STORES.MEETINGS, meetingId);
-        meeting.transcript = newText;
-        await dbPut(STORES.MEETINGS, meeting);
-        
-        // Mostrar feedback
-        const saveButton = document.getElementById('save-transcript-button');
-        const originalText = saveButton.textContent;
-        saveButton.textContent = '¡Guardado!';
-        saveButton.disabled = true;
-        setTimeout(() => {
-            saveButton.textContent = originalText;
-            saveButton.disabled = false;
-        }, 2000);
-        
-    } catch (error) {
-        console.error('Error al guardar la transcripción manual:', error);
-    }
-}
-
-
-// --- LÓGICA DE ACCIONES (GUARDAR, BORRAR, EXPORTAR) ---
-
-/**
- * Guarda los metadatos (título, tags) editados en el modal
- */
-async function saveModalMetadata() {
-    const meetingId = this.dataset.meetingId;
-    const newTitle = document.getElementById('modal-edit-title').value;
-    const newTags = document.getElementById('modal-edit-tags').value
-        .split(',')
-        .map(tag => tag.trim())
-        .filter(tag => tag); // Quitar tags vacíos
-        
-    try {
-        const meeting = await dbGet(STORES.MEETINGS, meetingId);
-        meeting.title = newTitle;
-        meeting.tags = newTags;
-        
-        await dbPut(STORES.MEETINGS, meeting);
-        
-        console.log('Metadatos guardados');
-        closeMeetingDetailModal();
-        renderHistoryList(); // Refrescar historial
-    } catch (error) {
-        console.error('Error al guardar metadatos:', error);
-    }
-}
-
-/**
- * Maneja el clic en el botón de borrar reunión (muestra confirmación)
- */
-function handleDeleteMeetingClick() {
-    const meetingId = this.dataset.meetingId;
-    
-    showAlertModal(
-        "¿Eliminar Reunión?",
-        "Esta acción es irreversible y borrará el audio, la transcripción y la minuta de IA.",
-        async () => {
-            await deleteMeeting(meetingId);
-            closeMeetingDetailModal();
-            renderHistoryList();
-            renderDashboard();
-        }
-    );
-}
-
-/**
- * Borra una reunión de todas las tablas de la DB
- */
-async function deleteMeeting(meetingId) {
-    try {
-        // Borrar reunión
-        await dbDelete(STORES.MEETINGS, meetingId);
-        // Borrar transcripción
-        await dbDelete(STORES.TRANSCRIPTS, meetingId);
-        // Borrar resumen
-        await dbDelete(STORES.SUMMARIES, meetingId);
-        // Borrar tareas
-        const allTasks = await dbGetAll(STORES.ACTION_ITEMS);
-        const tasksToDelete = allTasks.filter(task => task.meetingId === meetingId);
-        for (const task of tasksToDelete) {
-            await dbDelete(STORES.ACTION_ITEMS, task.id);
-        }
-        console.log(`Reunión ${meetingId} eliminada`);
-    } catch (error) {
-        console.error(`Error al eliminar la reunión ${meetingId}:`, error);
-    }
-}
-
-/**
- * Maneja el clic en el botón de borrar TODOS los datos (muestra confirmación)
- */
-function handleDeleteAllDataClick() {
-    showAlertModal(
-        "¿Borrar Todos los Datos?",
-        "¡Acción irreversible! Esto borrará TODAS las reuniones, audios, transcripciones y minutas de tu dispositivo.",
-        async () => {
-            await dbClear(STORES.MEETINGS);
-            await dbClear(STORES.TRANSCRIPTS);
-            await dbClear(STORES.SUMMARIES);
-            await dbClear(STORES.ACTION_ITEMS);
-            console.log("Todos los datos han sido borrados.");
-            renderHistoryList();
-            renderDashboard();
-        }
-    );
-}
-
-/**
- * Exporta una reunión específica como JSON
- */
-async function exportMeetingAsJSON() {
-    const meetingId = this.dataset.meetingId;
-    try {
-        const meeting = await dbGet(STORES.MEETINGS, meetingId);
-        const transcript = await dbGet(STORES.TRANSCRIPTS, meetingId);
-        const summary = await dbGet(STORES.SUMMARIES, meetingId);
-        const allTasks = await dbGetAll(STORES.ACTION_ITEMS);
-        const tasks = allTasks.filter(t => t.meetingId === meetingId);
-
-        // Quitar el audio blob para exportar, es demasiado grande
-        const meetingData = { ...meeting };
-        delete meetingData.audioBlob; 
-
-        const exportData = {
-            meeting: meetingData,
-            transcript: transcript || null,
-            summary: summary || null,
-            actionItems: tasks
-        };
-        
-        downloadJSON(exportData, `meeting_${meetingId}.json`);
-
-    } catch (error) {
-        console.error("Error al exportar reunión:", error);
-    }
-}
-
-/**
- * Exporta TODOS los datos de la aplicación como un solo JSON
- */
-async function exportAllData() {
-    try {
-        const meetings = await dbGetAll(STORES.MEETINGS);
-        const transcripts = await dbGetAll(STORES.TRANSCRIPTS);
-        const summaries = await dbGetAll(STORES.SUMMARIES);
-        const actionItems = await dbGetAll(STORES.ACTION_ITEMS);
-
-        // Quitar blobs de audio
-        const meetingsData = meetings.map(m => {
-            const data = { ...m };
-            delete data.audioBlob;
-            return data;
+    // 3. Configurar Navegación Principal
+    document.querySelectorAll('.nav-button').forEach(button => {
+        button.addEventListener('click', () => {
+            navigateTo(button.dataset.page);
         });
+    });
 
-        const exportData = {
-            meetings: meetingsData,
-            transcripts: transcripts,
-            summaries: summaries,
-            actionItems: actionItems
-        };
-
-        downloadJSON(exportData, 'meetingmind_backup.json');
-
-    } catch (error) {
-        console.error("Error al exportar todos los datos:", error);
-    }
-}
-
-/**
- * Función helper para descargar un objeto JSON como un archivo
- */
-function downloadJSON(data, filename) {
-    const jsonStr = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-}
-
-
-// --- LÓGICA DE MODAL DE ALERTA (CONFIRMACIÓN) ---
-
-/**
- * Muestra un modal de alerta/confirmación
- */
-function showAlertModal(title, message, onConfirmCallback) {
-    const modal = document.getElementById('alert-modal');
-    const backdrop = document.getElementById('alert-modal-backdrop');
+    // 4. Configurar Página de Grabación
+    const recordButton = document.getElementById('record-button');
+    const consentCheckbox = document.getElementById('consent-checkbox');
     
-    document.getElementById('alert-modal-title').textContent = title;
-    document.getElementById('alert-modal-message').textContent = message;
+    consentCheckbox.addEventListener('change', () => {
+        recordButton.disabled = !consentCheckbox.checked;
+    });
     
-    const confirmButton = document.getElementById('alert-modal-confirm');
-    
-    // Clonar el botón para limpiar listeners antiguos
-    const newConfirmButton = confirmButton.cloneNode(true);
-    confirmButton.parentNode.replaceChild(newConfirmButton, confirmButton);
-    
-    newConfirmButton.onclick = () => {
-        if (onConfirmCallback) {
-            onConfirmCallback();
+    recordButton.addEventListener('click', () => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            stopRecording();
+        } else {
+            startRecording();
         }
-        closeAlertModal();
-    };
+    });
+
+    // 5. Configurar Modal de Guardar
+    document.getElementById('save-button').addEventListener('click', saveMeeting);
+    document.getElementById('discard-button').addEventListener('click', discardRecording);
+
+    // 6. Configurar Modal de Alerta
+    document.getElementById('alert-ok-button').addEventListener('click', closeAlert);
+
+    // 7. Configurar Página de Detalle
+    document.getElementById('back-to-history').addEventListener('click', closeDetailPage);
     
-    modal.classList.add('active');
-    backdrop.classList.add('active');
-}
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.addEventListener('click', () => {
+            navigateToTab(button.dataset.tab);
+        });
+    });
+    
+    document.getElementById('process-ai-button').addEventListener('click', processMeetingWithAI);
+    document.getElementById('save-transcript-button').addEventListener('click', saveTranscript);
 
-/**
- * Cierra el modal de alerta
- */
-function closeAlertModal() {
-    document.getElementById('alert-modal').classList.remove('active');
-    document.getElementById('alert-modal-backdrop').classList.remove('active');
-}
-
-
-// --- HELPERS DE BASE DE DATOS (IndexedDB) ---
-
-/**
- * Inicializa la base de datos IndexedDB
- */
-function initDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-        request.onupgradeneeded = (event) => {
-            const dbInstance = event.target.result;
-            // Almacén de Reuniones (metadatos + audio)
-            if (!dbInstance.objectStoreNames.contains(STORES.MEETINGS)) {
-                dbInstance.createObjectStore(STORES.MEETINGS, { keyPath: 'id' });
+    // 8. Configurar Botón de Instalar PWA
+    const installButton = document.getElementById('install-pwa-button');
+    installButton.addEventListener('click', async () => {
+        if (!deferredInstallPrompt) {
+            return;
+        }
+        // Mostrar el prompt de instalación
+        deferredInstallPrompt.prompt();
+        // Esperar la elección del usuario
+        const { outcome } = await deferredInstallPrompt.userChoice;
+        if (outcome === 'accepted') {
+            console.log('El usuario aceptó la instalación');
+        } else {
+            console.log('El usuario rechazó la instalación');
+        }
+        // Solo se puede usar una vez
+        deferredInstallPrompt = null;
+        // Ocultar el botón
+        installButton.classList.add('hidden');
+    });
+    
+    // 9. Configurar Reconocimiento de Voz (si existe)
+    if (recognition) {
+        recognition.onresult = (event) => {
+            let tempInterim = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript + ' ';
+                } else {
+                    tempInterim += event.results[i][0].transcript;
+                }
             }
-            // Almacén de Transcripciones (para edición manual)
-            if (!dbInstance.objectStoreNames.contains(STORES.TRANSCRIPTS)) {
-                dbInstance.createObjectStore(STORES.TRANSCRIPTS, { keyPath: 'meetingId' });
-            }
-            // Almacén de Resúmenes (JSON de IA)
-            if (!dbInstance.objectStoreNames.contains(STORES.SUMMARIES)) {
-                dbInstance.createObjectStore(STORES.SUMMARIES, { keyPath: 'meetingId' });
-            }
-            // Almacén de Tareas
-            if (!dbInstance.objectStoreNames.contains(STORES.ACTION_ITEMS)) {
-                dbInstance.createObjectStore(STORES.ACTION_ITEMS, { keyPath: 'id' });
-            }
-            console.log('IndexedDB actualizado a la versión', DB_VERSION);
+            interimTranscript = tempInterim;
+            
+            // Oculto: No actualizamos la UI de transcripción en vivo
+            // document.getElementById('live-transcript-display').textContent = finalTranscript + interimTranscript;
         };
-
-        request.onsuccess = (event) => {
-            db = event.target.result;
-            console.log('Base de datos inicializada:', db);
-            resolve(db);
+        
+        recognition.onend = () => {
+            // Reiniciar automáticamente si la grabación sigue activa
+            if (mediaRecorder && mediaRecorder.state === 'recording' && isSpeechRecognitionActive) {
+                try {
+                    recognition.start();
+                } catch(e) {
+                    console.error("Error al reiniciar recognition:", e);
+                }
+            }
         };
-
-        request.onerror = (event) => {
-            console.error('Error al abrir la base de datos:', event.target.error);
-            reject(event.target.error);
+        
+        recognition.onerror = (event) => {
+            console.error("Error en reconocimiento de voz:", event.error);
+            if (event.error === 'no-speech' || event.error === 'audio-capture') {
+                // Errores comunes, no críticos
+            }
         };
-    });
+    }
+
+    // 10. Cargar página inicial (grabación)
+    navigateTo('page-record');
+    console.log("Aplicación MeetingMind inicializada.");
 }
 
-// Helpers genéricos de DB (promisificados)
-function dbTransaction(storeName, mode) {
-    return db.transaction(storeName, mode).objectStore(storeName);
-}
-
-function dbGet(storeName, key) {
-    return new Promise((resolve, reject) => {
-        const request = dbTransaction(storeName, 'readonly').get(key);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = (event) => reject(event.target.error);
-    });
-}
-
-function dbGetAll(storeName) {
-    return new Promise((resolve, reject) => {
-        const request = dbTransaction(storeName, 'readonly').getAll();
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = (event) => reject(event.target.error);
-    });
-}
-
-function dbAdd(storeName, value) {
-    return new Promise((resolve, reject) => {
-        const request = dbTransaction(storeName, 'readwrite').add(value);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = (event) => reject(event.target.error);
-    });
-}
-
-function dbPut(storeName, value) {
-    return new Promise((resolve, reject) => {
-        const request = dbTransaction(storeName, 'readwrite').put(value);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = (event) => reject(event.target.error);
-    });
-}
-
-function dbDelete(storeName, key) {
-    return new Promise((resolve, reject) => {
-        const request = dbTransaction(storeName, 'readwrite').delete(key);
-        request.onsuccess = () => resolve();
-        request.onerror = (event) => reject(event.target.error);
-    });
-}
-
-function dbClear(storeName) {
-    return new Promise((resolve, reject) => {
-        const request = dbTransaction(storeName, 'readwrite').clear();
-        request.onsuccess = () => resolve();
-        request.onerror = (event) => reject(event.target.error);
-    });
-}
+// ----------------------------------
+// INICIO DE LA APLICACIÓN
+// ----------------------------------
+document.addEventListener('DOMContentLoaded', initApp);
