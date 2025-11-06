@@ -1,88 +1,92 @@
-// Nombramos la caché
-const CACHE_NAME = 'meetingmind-v2'; // Versión actualizada
-
-// Archivos clave para guardar en caché (el "App Shell")
-const urlsToCache = [
+const CACHE_NAME = 'meetingmind-cache-v1.1';
+const ASSETS_TO_CACHE = [
+    './',
     './index.html',
-    './style.css',  // <-- AÑADIDO
-    './app.js',     // <-- AÑADIDO
+    './style.css',
+    './app.js',
     './manifest.json',
-    'https://cdn.tailwindcss.com',
-    'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
-    // Las fuentes específicas (ej. .woff2) se cachearán dinámicamente
+    'https://placehold.co/192x192/06b6d4/FFFFFF?text=MM', // Cache icon
+    'https://placehold.co/512x512/06b6d4/FFFFFF?text=MM'  // Cache icon
 ];
 
-// Evento 'install': se dispara cuando el SW se instala
+// Evento install: se dispara cuando el SW se instala
 self.addEventListener('install', event => {
-    // Espera hasta que el cacheo esté completo
+    console.log('[SW] Instalando Service Worker...');
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => {
-                console.log('Cache abierto, agregando el App Shell v2');
-                // Agrega todos los archivos del "App Shell" a la caché
-                return cache.addAll(urlsToCache);
+                console.log('[SW] Cache abierto. Cacheando assets iniciales.');
+                return cache.addAll(ASSETS_TO_CACHE);
+            })
+            .then(() => {
+                console.log('[SW] Assets iniciales cacheados con éxito.');
+                self.skipWaiting(); // Forza al SW a activarse
+            })
+            .catch(error => {
+                console.error('[SW] Error al cachear assets iniciales:', error);
             })
     );
 });
 
-// Evento 'fetch': se dispara cada vez que la app pide un recurso (imagen, script, etc.)
-self.addEventListener('fetch', event => {
-    // Estrategia "Cache-First" (primero caché, luego red)
-    event.respondWith(
-        caches.match(event.request)
-            .then(response => {
-                // 1. Si está en la caché, lo devolvemos desde ahí
-                if (response) {
-                    return response;
-                }
-                
-                // 2. Si no está en caché, lo pedimos a la red
-                return fetch(event.request).then(
-                    response => {
-                        // Comprobar si la respuesta es válida
-                        if(!response || response.status !== 200 || (response.type !== 'basic' && response.type !== 'opaque')) {
-                            return response; // Devolver la respuesta tal cual (ej. de API de Gemini)
-                        }
-
-                        // Clonar la respuesta. La respuesta solo se puede "consumir" una vez.
-                        const responseToCache = response.clone();
-
-                        // Abrir nuestra caché y guardar la nueva respuesta
-                        caches.open(CACHE_NAME)
-                            .then(cache => {
-                                // Solo cachear peticiones GET
-                                if (event.request.method === 'GET') {
-                                    cache.put(event.request, responseToCache);
-                                }
-                            });
-
-                        // Devolver la respuesta original a la aplicación
-                        return response;
-                    }
-                ).catch(error => {
-                    // Error de red (offline)
-                    console.warn('Fallo de red al buscar:', event.request.url, error.message);
-                    // Aquí podrías devolver una página offline genérica si la tuvieras
-                });
-            })
-    );
-});
-
-// Evento 'activate': se dispara cuando el SW se activa (ej. al cerrar y abrir la app)
-// Se usa para limpiar cachés antiguas.
+// Evento activate: se dispara cuando el SW se activa (limpia caches viejos)
 self.addEventListener('activate', event => {
-    const cacheWhitelist = [CACHE_NAME]; // Solo queremos esta versión de caché
+    console.log('[SW] Activando Service Worker...');
     event.waitUntil(
         caches.keys().then(cacheNames => {
             return Promise.all(
                 cacheNames.map(cacheName => {
-                    // Si la caché no está en nuestra "lista blanca", la borramos
-                    if (cacheWhitelist.indexOf(cacheName) === -1) {
-                        console.log('Borrando caché antigua:', cacheName);
+                    if (cacheName !== CACHE_NAME) {
+                        console.log('[SW] Limpiando cache antiguo:', cacheName);
                         return caches.delete(cacheName);
                     }
                 })
             );
+        }).then(() => {
+            console.log('[SW] Service Worker activado y caches limpios.');
+            return self.clients.claim(); // Toma control de las páginas abiertas
         })
+    );
+});
+
+// Evento fetch: intercepta todas las peticiones de red
+self.addEventListener('fetch', event => {
+    const request = event.request;
+
+    // No cachear peticiones a la API de Gemini
+    if (request.url.includes('generativelanguage.googleapis.com')) {
+        event.respondWith(fetch(request));
+        return;
+    }
+
+    // Estrategia: Cache, falling back to Network (Cache-First)
+    event.respondWith(
+        caches.match(request)
+            .then(cachedResponse => {
+                // Si la respuesta está en cache, la retornamos
+                if (cachedResponse) {
+                    // console.log('[SW] Retornando desde cache:', request.url);
+                    return cachedResponse;
+                }
+
+                // Si no, la buscamos en la red
+                // console.log('[SW] Buscando en red:', request.url);
+                return fetch(request)
+                    .then(networkResponse => {
+                        // Clonamos la respuesta antes de guardarla en cache
+                        const responseToCache = networkResponse.clone();
+                        
+                        // Guardamos la nueva respuesta en cache
+                        caches.open(CACHE_NAME)
+                            .then(cache => {
+                                cache.put(request, responseToCache);
+                            });
+
+                        return networkResponse;
+                    })
+                    .catch(error => {
+                        console.error('[SW] Error de fetch y no está en cache:', error);
+                        // Opcional: retornar una página offline de fallback
+                    });
+            })
     );
 });
