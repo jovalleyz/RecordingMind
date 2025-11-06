@@ -1,396 +1,306 @@
 <!DOCTYPE html>
-<html lang="es" class="h-full bg-gray-900">
+<html lang="es" class="h-full">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeetingMind PWA</title>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>MeetingMind</title>
+    
+    <!-- Manifiesto de la PWA -->
+    <link rel="manifest" href="./manifest.json">
+    
+    <!-- Icono para iOS -->
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/06b6d4/FFFFFF?text=MM">
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-    <!-- Web App Manifest -->
-    <link rel="manifest" href="./manifest.json">
-
-    <!-- Referencia al CSS -->
+    
+    <!-- Estilos personalizados -->
     <link rel="stylesheet" href="./style.css">
-
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
+    
+    <!-- Configuración de Tailwind (para la fuente Inter) -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                },
+            },
+        };
+    </script>
 </head>
-<body class="flex flex-col h-full max-w-lg mx-auto bg-gray-900 text-gray-100">
+<body class="bg-gray-900 text-gray-100 font-sans h-screen flex flex-col overflow-hidden">
 
-    <!-- Contenido Principal -->
-    <main class="flex-1 overflow-y-auto no-scrollbar">
-        
-        <!-- Pestaña: Grabar (visible por defecto) -->
-        <div id="page-record" data-page="record" class="active h-full flex flex-col justify-between">
-            <!-- Sección Superior -->
-            <div class="p-6">
-                <h1 class="text-3xl font-bold text-white">Grabar Reunión</h1>
-                <p class="text-lg text-gray-400 mt-2">Toca el botón para iniciar una nueva grabación.</p>
+    <!-- Contenido principal (páginas) -->
+    <main class="flex-grow overflow-y-auto" id="main-content">
+
+        <!-- ===== Página 1: Grabar (Por defecto) ===== -->
+        <div id="page-record" class="page-content flex flex-col items-center justify-between p-6 h-full">
+            <div class="w-full text-center">
+                <h1 class="text-2xl font-semibold text-gray-100">Grabar Reunión</h1>
+                <p id="recording-status-text" class="text-cyan-400 h-6 mt-2 text-lg"></p>
             </div>
 
-            <!-- Botón de Grabar -->
-            <div class="flex-1 flex flex-col items-center justify-center p-6">
-                <button id="record-button" class="relative flex items-center justify-center w-40 h-40 rounded-full bg-gray-700 text-gray-400 transition-all duration-300 ease-in-out shadow-xl disabled:opacity-30" disabled>
-                    <!-- Anillo de animación (oculto) -->
-                    <span id="record-ring" class="hidden absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75 pulse-ring"></span>
-                    <!-- Punto de animación (oculto) -->
-                    <span id="record-dot" class="hidden relative inline-flex rounded-full h-8 w-8 bg-cyan-500 pulse-dot"></span>
-                    
-                    <!-- Icono Mic (siempre visible) -->
-                    <svg id="record-icon-mic" class="w-16 h-16" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93V17.5h1.25a.75.75 0 010 1.5H7.75a.75.75 0 010-1.5H9v-2.57A6.969 6.969 0 014.062 9H3.75a.75.75 0 010-1.5h.312a6.969 6.969 0 015.688-5.43V4a1 1 0 011-1h.5a1 1 0 011 1v.07A6.969 6.969 0 0115.938 9h.312a.75.75 0 010 1.5h-.312a6.969 6.969 0 01-5.688 5.93z" clip-rule="evenodd" />
-                    </svg>
-                    
-                    <!-- Icono Stop (ELIMINADO) -->
-                </button>
-                <p id="timer-display" class="text-2xl font-semibold text-gray-300 mt-6">00:00:00</p>
-                <p id="recording-status" class="text-sm text-cyan-400 mt-2 h-5"></p>
+            <!-- Visualizador de Audio -->
+            <canvas id="audio-visualizer" class="w-full h-20 my-4"></canvas>
+
+            <!-- Cronómetro -->
+            <div id="timer" class="text-6xl font-light text-white my-6">
+                00:00:00
             </div>
 
-            <!-- Checkbox de Consentimiento (MOVISTO ABAJO) -->
-            <div class="p-6 pt-0">
-                <div class="p-4 bg-gray-800 rounded-lg">
-                    <label class="flex items-center cursor-pointer">
-                        <div class="relative">
-                            <input type="checkbox" id="consent-checkbox" class="sr-only">
-                            <div class="block bg-gray-600 w-10 h-6 rounded-full"></div>
-                            <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition"></div>
-                        </div>
-                        <div class="ml-3 text-sm text-gray-300">
-                            Confirmo que todos los participantes consienten la grabación.
-                        </div>
-                    </label>
-                </div>
-            </div>
-        </div>
+            <!-- Botón de Grabación -->
+            <button id="record-button" class="relative w-24 h-24 rounded-full bg-cyan-500 flex items-center justify-center shadow-lg transition-all duration-300 ease-in-out disabled:bg-gray-600 disabled:opacity-50" disabled>
+                <!-- Anillo de pulsación (oculto por defecto) -->
+                <div id="pulse-ring" class="hidden absolute top-0 left-0 w-full h-full rounded-full bg-cyan-400 opacity-75"></div>
+                <!-- Punto de pulsación (oculto por defecto) -->
+                <div id="pulse-dot" class="hidden absolute top-0 left-0 w-full h-full rounded-full bg-cyan-500"></div>
 
-        <!-- Pestaña: Historial -->
-        <div id="page-history" data-page="history" class="p-6">
-            <h1 class="text-3xl font-bold text-white">Historial</h1>
+                <!-- Icono de Micrófono (visible por defecto) -->
+                <svg id="icon-mic" xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-white z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-14 0m7 7v4m-4-4v-3m8 3v-3m-4-11A4 4 0 0112 7v4a4 4 0 01-8 0V7a4 4 0 014-4z" />
+                </svg>
+            </button>
             
-            <!-- Controles de Búsqueda y Filtro -->
-            <div class="mt-6">
-                <input type="search" id="search-history" class="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500" placeholder="Buscar en reuniones...">
-            </div>
-
-            <!-- Lista de Reuniones -->
-            <div id="history-list-container" class="mt-6">
-                <!-- Estado Vacío -->
-                <div id="history-empty-state" class="text-center py-10 px-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 text-gray-600 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7m-4 4l-4 4m0 0l-4-4m4 4V3" />
-                    </svg>
-                    <h3 class="mt-4 text-xl font-semibold text-gray-300">No hay reuniones</h3>
-                    <p class="mt-2 text-gray-500">Inicia una nueva grabación para verla aquí.</p>
-                </div>
-
-                <!-- Lista (se llena con JS) -->
-                <ul id="history-list" class="space-y-4">
-                    <!-- Plantilla de item (JS la usa)
-                    <li class="bg-gray-800 p-4 rounded-lg shadow-md cursor-pointer hover:bg-gray-700 transition-colors duration-200">
-                        <h3 class="text-lg font-semibold text-white">Título de la Reunión</h3>
-                        <p class="text-sm text-gray-400">01 Ene 2024, 10:30 a.m.  •  45:12</p>
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            <span class="px-2 py-0.5 bg-cyan-700 text-cyan-100 text-xs font-medium rounded-full">Proyecto</span>
-                        </div>
-                        <div class="mt-3 text-xs text-yellow-400">Pendiente de IA</div>
-                    </li>
-                    -->
-                </ul>
+            <!-- Contenedor de Consentimiento (movido abajo) -->
+            <div id="consent-container" class="w-full max-w-md mt-10 mb-4">
+                <label for="consent-checkbox" class="flex items-center justify-center p-4 bg-gray-800 rounded-lg shadow-inner cursor-pointer">
+                    <input type="checkbox" id="consent-checkbox" class="consent-checkbox">
+                    <span class="ml-3 text-sm text-gray-300">Confirmo que todos los participantes consienten la grabación.</span>
+                </label>
             </div>
         </div>
 
-        <!-- Pestaña: Dashboard -->
-        <div id="page-dashboard" data-page="dashboard" class="p-6">
-            <h1 class="text-3xl font-bold text-white">Dashboard</h1>
+        <!-- ===== Página 2: Historial ===== -->
+        <div id="page-history" class="page-content p-6 hidden">
+            <h1 class="text-2xl font-semibold mb-4">Historial de Reuniones</h1>
+            <!-- TODO: Añadir barra de búsqueda y filtros -->
+            
+            <div id="history-list-container">
+                <!-- El estado vacío se mostrará primero -->
+                <div id="history-empty-state" class="text-center py-10">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-16 w-16 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7M3 7l9 5 9-5M3 7V5a2 2 0 012-2h14a2 2 0 012 2v2" />
+                    </svg>
+                    <p class="mt-4 text-lg text-gray-400">No hay reuniones grabadas.</p>
+                    <p class="text-sm text-gray-500">Tus grabaciones aparecerán aquí.</p>
+                </div>
+                <!-- Las tarjetas de historial se insertarán aquí -->
+            </div>
+        </div>
+
+        <!-- ===== Página 3: Dashboard ===== -->
+        <div id="page-dashboard" class="page-content p-6 hidden">
+            <h1 class="text-2xl font-semibold mb-6">Dashboard Ejecutivo</h1>
             
             <!-- KPIs -->
-            <div class="grid grid-cols-2 gap-4 mt-6">
-                <div class="bg-gray-800 p-4 rounded-lg">
-                    <h4 class="text-sm font-medium text-gray-400">Tiempo en Reuniones</h4>
-                    <p id="kpi-total-time" class="text-2xl font-bold text-white mt-1">0h 0m</p>
-                    <p class="text-xs text-gray-500">Últimos 30 días</p>
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="bg-gray-800 p-4 rounded-lg shadow">
+                    <p class="text-sm text-gray-400">Tiempo Total (Mes)</p>
+                    <p id="kpi-total-time" class="text-2xl font-bold">0h 0m</p>
                 </div>
-                <div class="bg-gray-800 p-4 rounded-lg">
-                    <h4 class="text-sm font-medium text-gray-400">Efectividad Prom.</h4>
-                    <p id="kpi-avg-effectiveness" class="text-2xl font-bold text-white mt-1">N/A</p>
-                    <p class="text-xs text-gray-500">Calculada por IA</p>
+                <div class="bg-gray-800 p-4 rounded-lg shadow">
+                    <p class="text-sm text-gray-400">Reuniones (Mes)</p>
+                    <p id="kpi-total-meetings" class="text-2xl font-bold">0</p>
                 </div>
-                <div class="bg-gray-800 p-4 rounded-lg">
-                    <h4 class="text-sm font-medium text-gray-400">Tareas Abiertas</h4>
-                    <p id="kpi-open-tasks" class="text-2xl font-bold text-white mt-1">0</p>
-                    <p class="text-xs text-gray-500">De todas las reuniones</p>
+                <div class="bg-gray-800 p-4 rounded-lg shadow">
+                    <p class="text-sm text-gray-400">Tareas Abiertas</p>
+                    <p id="kpi-open-tasks" class="text-2xl font-bold">0</p>
                 </div>
-                <div class="bg-gray-800 p-4 rounded-lg">
-                    <h4 class="text-sm font-medium text-gray-400">% con Acción</h4>
-                    <p id="kpi-meetings-with-actions" class="text-2xl font-bold text-white mt-1">0%</p>
-                    <p class="text-xs text-gray-500">Reuniones con tareas</p>
+                <div class="bg-gray-800 p-4 rounded-lg shadow">
+                    <p class="text-sm text-gray-400">% Con Acción</p>
+                    <p id="kpi-action-items-pct" class="text-2xl font-bold">0%</p>
                 </div>
             </div>
 
             <!-- Tareas Pendientes -->
-            <div class="mt-8">
-                <h3 class="text-xl font-semibold text-white">Tareas Pendientes</h3>
-                <div id="tasks-empty-state" class="mt-4 text-center py-6 px-4 bg-gray-800 rounded-lg">
-                    <p class="text-gray-500">No hay tareas pendientes.</p>
+            <div>
+                <h2 class="text-xl font-semibold mb-4">Tareas Abiertas</h2>
+                <div id="tasks-empty-state" class="text-center py-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p class="mt-3 text-md text-gray-400">¡Todo al día!</p>
+                    <p class="text-sm text-gray-500">No hay tareas pendientes.</p>
                 </div>
-                <ul id="tasks-list" class="mt-4 space-y-3">
-                    <!-- Plantilla de Tarea
-                    <li class="bg-gray-800 p-3 rounded-lg flex items-center justify-between">
-                        <div>
-                            <p class="text-white">Definir el roadmap del Q3</p>
-                            <p class="text-xs text-gray-400">Resp: Ana G. | Límite: 2024-11-15</p>
-                        </div>
-                        <span class="px-2 py-0.5 bg-red-600 text-white text-xs font-medium rounded-full">Alta</span>
-                    </li>
-                    -->
+                <ul id="tasks-list" class="space-y-3">
+                    <!-- Las tareas se insertarán aquí -->
                 </ul>
             </div>
-            
-            <!-- Temas Frecuentes -->
-            <div class="mt-8">
-                <h3 class="text-xl font-semibold text-white">Temas Frecuentes</h3>
-                <div id="topics-empty-state" class="mt-4 text-center py-6 px-4 bg-gray-800 rounded-lg">
-                    <p class="text-gray-500">No hay temas detectados.</p>
-                </div>
-                <div id="topics-list" class="mt-4 flex flex-wrap gap-2">
-                    <!-- <span class="px-3 py-1 bg-cyan-700 text-cyan-100 text-sm rounded-full">Proyecto Fénix (5)</span> -->
-                </div>
-            </div>
         </div>
 
-        <!-- Pestaña: Perfil -->
-        <div id="page-profile" data-page="profile" class="p-6">
-            <h1 class="text-3xl font-bold text-white">Perfil y Ajustes</h1>
+        <!-- ===== Página 4: Perfil ===== -->
+        <div id="page-profile" class="page-content p-6 hidden">
+            <h1 class="text-2xl font-semibold mb-6">Perfil y Configuración</h1>
+            
+            <div class="bg-gray-800 p-4 rounded-lg shadow mb-6">
+                <p class="text-lg font-medium">MeetingMind PWA</p>
+                <p class="text-sm text-gray-400">Versión 1.1 (Local-First)</p>
+            </div>
 
-            <div class="mt-8 space-y-6">
-                <!-- Botón de Instalar PWA -->
-                <div id="install-pwa-container" class="hidden">
-                    <button id="install-pwa-button" class="w-full text-left p-4 bg-cyan-600 text-white rounded-lg font-semibold hover:bg-cyan-500 transition-colors duration-200 flex items-center justify-between">
-                        <span>Instalar Aplicación</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V3" />
-                        </svg>
+            <!-- Botón de Instalar PWA (oculto por defecto) -->
+            <button id="install-pwa-button" class="hidden w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Instalar Aplicación
+            </button>
+            
+            <p class="text-xs text-gray-500 mt-6 text-center">Todo el historial se guarda localmente en tu dispositivo.</p>
+        </div>
+        
+        <!-- ===== Página 5: Detalle de Reunión (Superposición) ===== -->
+        <div id="page-detail" class="page-content absolute top-0 left-0 w-full h-full bg-gray-900 z-20 transform translate-x-full transition-transform duration-300 ease-in-out p-6 overflow-y-auto">
+            
+            <!-- Cabecera -->
+            <div class="flex items-center mb-4">
+                <button id="back-to-history" class="p-2 -ml-2 text-gray-300 hover:text-cyan-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+                <h1 id="detail-title" class="text-xl font-semibold ml-2 truncate">Detalle de Reunión</h1>
+            </div>
+
+            <!-- Reproductor de Audio -->
+            <div class="my-4">
+                <audio id="audio-player" class="w-full" controls></audio>
+            </div>
+            
+            <!-- Botón de Acción IA -->
+            <button id="process-ai-button" class_disabled="bg-gray-600 opacity-50 cursor-not-allowed" class="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors mb-6 disabled:bg-gray-600 disabled:opacity-50">
+                <span id="ai-button-text">Transcribir y Resumir (IA)</span>
+                <div id="ai-button-spinner" class="spinner hidden"></div>
+            </button>
+
+            <!-- Pestañas -->
+            <div class="border-b border-gray-700 mb-4">
+                <nav class="flex -mb-px space-x-4" aria-label="Tabs">
+                    <button class="tab-button active" data-tab="tab-summary">
+                        Minuta
                     </button>
-                    <p class="text-xs text-gray-500 mt-2">Instala MeetingMind en tu dispositivo para acceso rápido y sin conexión.</p>
+                    <button class="tab-button" data-tab="tab-transcript">
+                        Transcripción
+                    </button>
+                    <button class="tab-button" data-tab="tab-details">
+                        Detalles
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Contenido de Pestañas -->
+            <div>
+                <!-- Pestaña Minuta (IA) -->
+                <div id="tab-summary" class="tab-content space-y-4">
+                    <div id="summary-empty-state" class="text-center py-6 text-gray-500">
+                        <p>Aún no se ha generado ninguna minuta.</p>
+                        <p class="text-sm">Usa el botón de IA para crear una.</p>
+                    </div>
+                    <div id="summary-content" class="hidden">
+                        <!-- La minuta generada por IA se insertará aquí -->
+                    </div>
+                </div>
+
+                <!-- Pestaña Transcripción -->
+                <div id="tab-transcript" class="tab-content hidden space-y-4">
+                    <textarea id="transcript-editor" class="w-full h-64 bg-gray-800 border border-gray-700 rounded-lg p-3 text-gray-200 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="La transcripción aparecerá aquí... (o puedes editarla manualmente)"></textarea>
+                    <button id="save-transcript-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+                        Guardar Cambios
+                    </button>
                 </div>
                 
-                <!-- Preferencias -->
-                <div>
-                    <h3 class="text-lg font-medium text-gray-300">Preferencias</h3>
-                    <div class="mt-2 p-4 bg-gray-800 rounded-lg">
-                        <label for="user-language" class="block text-sm font-medium text-gray-400">Idioma de la IA</label>
-                        <select id="user-language" class="w-full mt-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500">
-                            <option value="es">Español</option>
-                            <option value="en">Inglés</option>
-                        </select>
+                <!-- Pestaña Detalles -->
+                <div id="tab-details" class="tab-content hidden space-y-3">
+                    <div class="bg-gray-800 p-3 rounded-lg">
+                        <p class="text-sm text-gray-400">Fecha</p>
+                        <p id="detail-date" class="text-md"></p>
                     </div>
-                </div>
-
-                <!-- Exportar/Borrar Datos -->
-                <div>
-                    <h3 class="text-lg font-medium text-gray-300">Gestión de Datos</h3>
-                    <div class="mt-2 space-y-3">
-                        <button id="export-all-data" class="w-full text-left p-4 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors duration-200">Exportar todos los datos (JSON)</button>
-                        <button id="delete-all-data" class="w-full text-left p-4 bg-red-800 text-white rounded-lg hover:bg-red-700 transition-colors duration-200">Borrar todos los datos locales</button>
-                        <p class="text-xs text-gray-500">Esta acción es irreversible y borrará todas las grabaciones y minutas de tu dispositivo.</p>
+                    <div class="bg-gray-800 p-3 rounded-lg">
+                        <p class="text-sm text-gray-400">Duración</p>
+                        <p id="detail-duration" class="text-md"></p>
+                    </div>
+                    <div class="bg-gray-800 p-3 rounded-lg">
+                        <p class="text-sm text-gray-400">Estado</p>
+                        <p id="detail-status" class="text-md"></p>
                     </div>
                 </div>
             </div>
         </div>
+
     </main>
 
-    <!-- Barra de Navegación Inferior -->
-    <nav class="flex justify-around bg-gray-800 border-t border-gray-700 shadow-lg">
+    <!-- ===== Barra de Navegación Inferior ===== -->
+    <nav class="flex justify-around items-center bg-gray-900 border-t border-gray-700 shadow-lg sticky bottom-0 w-full" style="padding-bottom: env(safe-area-inset-bottom, 0);">
         <button class="nav-button active flex flex-col items-center justify-center p-3 w-full" data-page="record">
             <!-- Icono Grabar -->
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-7 h-7">
-                <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93V17.5h1.25a.75.75 0 010 1.5H7.75a.75.75 0 010-1.5H9v-2.57A6.969 6.969 0 014.062 9H3.75a.75.75 0 010-1.5h.312a6.969 6.969 0 015.688-5.43V4a1 1 0 011-1h.5a1 1 0 011 1v.07A6.969 6.969 0 0115.938 9h.312a.75.75 0 010 1.5h-.312a6.969 6.969 0 01-5.688 5.93z" clip-rule="evenodd" />
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm-2 4a5 5 0 004 4.9V16H7a1 1 0 100 2h6a1 1 0 100-2h-2v-3.1A5 5 0 0015 8V4a5 5 0 00-10 0v4z" clip-rule="evenodd" />
             </svg>
             <span class="text-xs font-medium mt-1">Grabar</span>
         </button>
         <button class="nav-button flex flex-col items-center justify-center p-3 w-full" data-page="history">
             <!-- Icono Historial -->
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-7 h-7">
-                <path d="M5.75 2a.75.75 0 00-.75.75V4.5h.75A.75.75 0 016.5 6h7a.75.75 0 01.75-.75h.75V2.75a.75.75 0 00-.75-.75H5.75z" />
-                <path fill-rule="evenodd" d="M4 5.5a.75.75 0 01.75-.75h10.5a.75.75 0 01.75.75v10.75a.75.75 0 01-.75.75H4.75a.75.75 0 01-.75-.75V5.5zM5.5 10a.75.75 0 000 1.5h9a.75.75 0 000-1.5h-9zM5.5 14a.75.75 0 000 1.5h6a.75.75 0 000-1.5h-6z" clip-rule="evenodd" />
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
             </svg>
             <span class="text-xs font-medium mt-1">Historial</span>
         </button>
         <button class="nav-button flex flex-col items-center justify-center p-3 w-full" data-page="dashboard">
             <!-- Icono Dashboard -->
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-7 h-7">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M2.5 3A1.5 1.5 0 0 0 1 4.5v11A1.5 1.5 0 0 0 2.5 17h15a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 17.5 3h-15ZM3 7.5h14v8H3v-8Zm1.5-1.5a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1h-3ZM9 6a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 9 6Zm2 0a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 11 6Zm2 0a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 13 6Zm2 0a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 15 6Z" clip-rule="evenodd" />
             </svg>
             <span class="text-xs font-medium mt-1">Dashboard</span>
         </button>
         <button class="nav-button flex flex-col items-center justify-center p-3 w-full" data-page="profile">
             <!-- Icono Perfil -->
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-7 h-7">
-                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-5.5-2.5a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0zM10 12a5.99 5.99 0 00-4.793 2.39A6.483 6.483 0 0010 16.5a6.483 6.483 0 004.793-2.11A5.99 5.99 0 0010 12z" clip-rule="evenodd" />
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.91A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.09A5 5 0 0010 11z" clip-rule="evenodd" />
             </svg>
             <span class="text-xs font-medium mt-1">Perfil</span>
         </button>
     </nav>
+    
+    <!-- ===== Modales (Ocultos) ===== -->
 
-    <!-- Modal de Detalle de Reunión -->
-    <div id="modal-backdrop" class="modal-backdrop"></div>
-    <div id="meeting-detail-modal" class="modal bg-gray-800 text-white rounded-lg shadow-2xl">
-        
-        <!-- Cabecera del Modal -->
-        <div class="flex items-center justify-between p-4 border-b border-gray-700">
-            <h2 class="text-lg font-semibold text-white">Detalle de la Reunión</h2>
-            <button id="modal-close-button" class="text-gray-400 hover:text-white">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
-        </div>
-
-        <!-- Pestañas del Modal -->
-        <div class="border-b border-gray-700">
-            <nav class="flex -mb-px">
-                <button data-tab="summary" class="modal-tab-button active w-1/3 py-3 px-1 text-center text-sm font-medium border-b-2 border-cyan-500 text-cyan-400">
-                    Minuta (IA)
-                </button>
-                <button data-tab="transcript" class="modal-tab-button w-1/3 py-3 px-1 text-center text-sm font-medium border-b-2 border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-300">
-                    Transcripción
-                </button>
-                <button data-tab="actions" class="modal-tab-button w-1/3 py-3 px-1 text-center text-sm font-medium border-b-2 border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-300">
-                    Acciones
-                </button>
-            </nav>
-        </div>
-
-        <!-- Contenido de Pestañas del Modal -->
-        <div class="p-5 overflow-y-auto max-h-[60vh] no-scrollbar">
-            
-            <!-- Pestaña: Resumen/Minuta -->
-            <div id="modal-tab-summary" class="modal-tab-content active space-y-4">
-                <!-- Estado de Carga -->
-                <div id="summary-loading-state" class="text-center py-8 hidden">
-                    <svg class="animate-spin h-8 w-8 text-cyan-400 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <p class="mt-3 text-gray-400">Procesando con IA...</p>
-                </div>
-                <!-- Estado Vacío -->
-                <div id="summary-empty-state" class="text-center py-8">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-gray-600 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2.25 2.25 0 00-2.242-2.242B5.68 13.186 5.68 13.186a2.25 2.25 0 00-2.242 2.242M19.428 15.428V19.5a2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25v-4.072M19.428 15.428c0 .093.006.185.018.275l.01.086c.048.42.083.837.083 1.26V19.5" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12.75 9.75l.75 7.5m-1.5-7.5l-.75 7.5m4.5-4.5l.75 4.5m-1.5-4.5l-.75 4.5M9 12l.75 4.5M7.5 12l-.75 4.5M16.5 9.75l-.75 7.5m-1.5-7.5l.75 7.5m-4.5-4.5l-.75 4.5m1.5-4.5l.75 4.5" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 8.25V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v.75m-18 0c0 .423.035.84.083 1.26l.01.086c.012.09.018.182.018.275V15.75a2.25 2.25 0 002.25 2.25h13.5a2.25 2.25 0 002.25-2.25V10.5c0-.093-.006-.185-.018-.275l-.01-.086A11.19 11.19 0 0021 8.25m-18 0c0-.423.035.84.083-1.26l.01-.086A11.19 11.19 0 013 8.25" />
-                    </svg>
-                    <p class="mt-3 text-gray-400">La minuta de IA aún no se ha generado.</p>
-                    <button id="generate-ai-summary-button" class="mt-4 px-4 py-2 bg-cyan-600 text-white rounded-lg font-semibold hover:bg-cyan-500 transition-colors duration-200">
-                        Transcribir y Resumir (IA)
-                    </button>
-                    <p id="ai-error-message" class="text-red-400 text-sm mt-3"></p>
-                </div>
-                <!-- Contenido de la Minuta -->
-                <div id="summary-content" class="hidden space-y-4">
-                    <div>
-                        <h4 class="font-semibold text-cyan-400">Resumen General</h4>
-                        <p id="summary-overview" class="text-sm text-gray-300 whitespace-pre-wrap"></p>
-                    </div>
-                    <div>
-                        <h4 class="font-semibold text-cyan-400">Objetivo General</h4>
-                        <p id="summary-objective" class="text-sm text-gray-300"></p>
-                    </div>
-                    <div>
-                        <h4 class="font-semibold text-cyan-400">Desarrollo por Participante</h4>
-                        <ul id="summary-participants" class="list-disc list-inside text-sm text-gray-300 space-y-1"></ul>
-                    </div>
-                    <div>
-                        <h4 class="font-semibold text-cyan-400">Puntos Relevantes</h4>
-                        <ul id="summary-keypoints" class="list-disc list-inside text-sm text-gray-300 space-y-1"></ul>
-                    </div>
-                    <div>
-                        <h4 class="font-semibold text-cyan-400">Plan de Acción</h4>
-                        <ul id="summary-actionplan" class="text-sm text-gray-300 space-y-2"></ul>
-                    </div>
-                    <div>
-                        <h4 class="font-semibold text-cyan-400">Temas</h4>
-                        <div id="summary-topics" class="flex flex-wrap gap-2 text-sm"></div>
-                    </div>
-                </div>
+    <!-- Modal para Guardar Grabación -->
+    <div id="save-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-30 p-6 hidden modal-backdrop">
+        <div class="bg-gray-800 w-full max-w-md p-6 rounded-lg shadow-xl modal-content">
+            <h2 class="text-xl font-semibold mb-4">Guardar Grabación</h2>
+            <p id="modal-duration-info" class="text-gray-300 mb-4"></p>
+            <div>
+                <label for="meeting-title-input" class="block text-sm font-medium text-gray-300 mb-2">Título de la Reunión</label>
+                <input type="text" id="meeting-title-input" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2.5 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="Ej: Reunión de Sincronización">
             </div>
-            
-            <!-- Pestaña: Transcripción -->
-            <div id="modal-tab-transcript" class="modal-tab-content space-y-4">
-                <p id="transcript-status-message" class="text-sm text-gray-500 text-center py-4">Transcripción no disponible.</p>
-                
-                <div id="transcript-editor-container" class="hidden">
-                    <p class="text-xs text-gray-400 mb-2">Puedes editar la transcripción aquí. Los cambios se guardarán automáticamente.</p>
-                    <div id="transcript-editor" class_disabled="w-full h-64 p-3 bg-gray-900 text-gray-200 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-500" contenteditable="true" role="textbox">
-                        <!-- La transcripción se inserta aquí -->
-                    </div>
-                </div>
-                
-                <button id="save-transcript-button" class="w-full px-4 py-2 bg-cyan-600 text-white rounded-lg font-semibold hover:bg-cyan-500 transition-colors duration-200 hidden">
-                    Guardar Cambios
+            <div class="flex justify-end space-x-3 mt-6">
+                <button id="discard-button" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white font-medium transition-colors">
+                    Descartar
+                </button>
+                <button id="save-button" class="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-white font-bold transition-colors">
+                    Guardar
                 </button>
             </div>
-
-            <!-- Pestaña: Acciones -->
-            <div id="modal-tab-actions" class="modal-tab-content space-y-4">
-                <!-- Metadatos Editables -->
-                <div>
-                    <label for="modal-edit-title" class="block text-sm font-medium text-gray-400">Título</label>
-                    <input type="text" id="modal-edit-title" class="w-full mt-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500">
-                </div>
-                <div>
-                    <label for="modal-edit-tags" class="block text-sm font-medium text-gray-400">Etiquetas (separadas por coma)</label>
-                    <input type="text" id="modal-edit-tags" class="w-full mt-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500">
-                </div>
-                <button id="modal-save-metadata-button" class="w-full px-4 py-2 bg-cyan-600 text-white rounded-lg font-semibold hover:bg-cyan-500 transition-colors duration-200">
-                    Guardar Cambios
-                </button>
-                <hr class="border-gray-700 my-4">
-                
-                <!-- Reproductor de Audio -->
-                <div id="modal-audio-player-container" class="hidden">
-                    <h4 class="font-medium text-gray-300 mb-2">Audio</h4>
-                    <audio id="modal-audio-player" controls class="w-full"></audio>
-                </div>
-
-                <!-- Botones de Acción -->
-                <div class="space-y-3 pt-4">
-                    <button id="modal-export-json-button" class="w-full text-left p-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors duration-200">Exportar Minuta (JSON)</button>
-                    <button id="modal-delete-button" class="w-full text-left p-3 bg-red-800 text-white rounded-lg hover:bg-red-700 transition-colors duration-200">Eliminar Reunión</button>
-                </div>
-            </div>
         </div>
-
     </div>
     
-    <!-- Modal de Alerta/Confirmación -->
-    <div id="alert-modal-backdrop" class="modal-backdrop"></div>
-    <div id="alert-modal" class="modal bg-gray-800 text-white rounded-lg shadow-2xl">
-        <div class="p-6">
-            <h3 id="alert-modal-title" class="text-lg font-semibold text-white">Confirmación</h3>
-            <p id="alert-modal-message" class="mt-2 text-sm text-gray-300">¿Estás seguro?</p>
-        </div>
-        <div class="px-6 py-4 bg-gray-700 flex justify-end space-x-3 rounded-b-lg">
-            <button id="alert-modal-cancel" class="px-4 py-2 bg-gray-600 text-white text-sm font-medium rounded-md hover:bg-gray-500">Cancelar</button>
-            <button id="alert-modal-confirm" class="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-500">Confirmar</button>
+    <!-- Modal de Alerta Genérico -->
+    <div id="alert-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40 p-6 hidden modal-backdrop">
+        <div class="bg-gray-800 w-full max-w-sm p-6 rounded-lg shadow-xl modal-content">
+            <h2 id="alert-title" class="text-xl font-semibold mb-3"></h2>
+            <p id="alert-message" class_message="text-gray-300 mb-5"></p>
+            <div class="flex justify-end">
+                <button id="alert-ok-button" class="px-5 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-white font-bold transition-colors">
+                    Entendido
+                </button>
+            </div>
         </div>
     </div>
 
-    <!-- *** ¡CORRECCIÓN CLAVE! ***
-         La etiqueta del script ahora está al final del body
-         y ya no usa type="module". -->
+    <!-- Script principal de la aplicación -->
+    <!-- Se carga al final para asegurar que todo el HTML esté listo -->
     <script src="./app.js"></script>
 
 </body>
