@@ -37,7 +37,7 @@
     <!-- Contenido principal (páginas) -->
     <main class="flex-grow overflow-y-auto" id="main-content">
 
-        <!-- ===== Página 1: Grabar (Por defecto) ===== -->
+        <!-- ===== Página 1: Grabar (ESTA NO TIENE 'hidden') ===== -->
         <div id="page-record" class="page-content flex flex-col items-center justify-between p-6 h-full">
             <div class="w-full text-center">
                 <h1 class="text-2xl font-semibold text-gray-100">Grabar Reunión</h1>
@@ -74,30 +74,24 @@
             </div>
         </div>
 
-        <!-- ===== Página 2: Historial ===== -->
+        <!-- ===== Página 2: Historial (ESTA SÍ TIENE 'hidden') ===== -->
         <div id="page-history" class="page-content p-6 hidden">
             <h1 class="text-2xl font-semibold mb-4">Historial de Reuniones</h1>
-            <!-- TODO: Añadir barra de búsqueda y filtros -->
-            
             <div id="history-list-container">
-                <!-- El estado vacío se mostrará primero -->
                 <div id="history-empty-state" class="text-center py-10">
                     <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-16 w-16 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7M3 7l9 5 9-5M3 7V5a2 2 0 012-2h14a2 2 0 012 2v2" />
                     </svg>
                     <p class="mt-4 text-lg text-gray-400">No hay reuniones grabadas.</p>
-                    <p class="text-sm text-gray-500">Tus grabaciones aparecerán aquí.</p>
                 </div>
-                <!-- Las tarjetas de historial se insertarán aquí -->
             </div>
         </div>
 
         <!-- ===== Página 3: Dashboard ===== -->
         <div id="page-dashboard" class="page-content p-6 hidden">
             <h1 class="text-2xl font-semibold mb-6">Dashboard Ejecutivo</h1>
-            
-            <!-- KPIs -->
-            <div class="grid grid-cols-2 gap-4 mb-6">
+            <!-- Contenido del Dashboard... -->
+             <div class="grid grid-cols-2 gap-4 mb-6">
                 <div class="bg-gray-800 p-4 rounded-lg shadow">
                     <p class="text-sm text-gray-400">Tiempo Total (Mes)</p>
                     <p id="kpi-total-time" class="text-2xl font-bold">0h 0m</p>
@@ -115,8 +109,6 @@
                     <p id="kpi-action-items-pct" class="text-2xl font-bold">0%</p>
                 </div>
             </div>
-
-            <!-- Tareas Pendientes -->
             <div>
                 <h2 class="text-xl font-semibold mb-4">Tareas Abiertas</h2>
                 <div id="tasks-empty-state" class="text-center py-6">
@@ -124,108 +116,64 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <p class="mt-3 text-md text-gray-400">¡Todo al día!</p>
-                    <p class="text-sm text-gray-500">No hay tareas pendientes.</p>
                 </div>
-                <ul id="tasks-list" class="space-y-3">
-                    <!-- Las tareas se insertarán aquí -->
-                </ul>
+                <ul id="tasks-list" class="space-y-3"></ul>
             </div>
         </div>
 
         <!-- ===== Página 4: Perfil ===== -->
         <div id="page-profile" class="page-content p-6 hidden">
             <h1 class="text-2xl font-semibold mb-6">Perfil y Configuración</h1>
-            
             <div class="bg-gray-800 p-4 rounded-lg shadow mb-6">
                 <p class="text-lg font-medium">MeetingMind PWA</p>
                 <p class="text-sm text-gray-400">Versión 1.1 (Local-First)</p>
             </div>
-
-            <!-- Botón de Instalar PWA (oculto por defecto) -->
             <button id="install-pwa-button" class="hidden w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 Instalar Aplicación
             </button>
-            
             <p class="text-xs text-gray-500 mt-6 text-center">Todo el historial se guarda localmente en tu dispositivo.</p>
         </div>
         
         <!-- ===== Página 5: Detalle de Reunión (Superposición) ===== -->
         <div id="page-detail" class="page-content absolute top-0 left-0 w-full h-full bg-gray-900 z-20 transform translate-x-full transition-transform duration-300 ease-in-out p-6 overflow-y-auto">
-            
-            <!-- Cabecera -->
+            <!-- Contenido del Detalle... -->
             <div class="flex items-center mb-4">
                 <button id="back-to-history" class="p-2 -ml-2 text-gray-300 hover:text-cyan-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <h1 id="detail-title" class="text-xl font-semibold ml-2 truncate">Detalle de Reunión</h1>
             </div>
-
-            <!-- Reproductor de Audio -->
-            <div class="my-4">
-                <audio id="audio-player" class="w-full" controls></audio>
-            </div>
-            
-            <!-- Botón de Acción IA -->
-            <button id="process-ai-button" class_disabled="bg-gray-600 opacity-50 cursor-not-allowed" class="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors mb-6 disabled:bg-gray-600 disabled:opacity-50">
+            <div class="my-4"><audio id="audio-player" class="w-full" controls></audio></div>
+            <button id="process-ai-button" class="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors mb-6 disabled:bg-gray-600 disabled:opacity-50">
                 <span id="ai-button-text">Transcribir y Resumir (IA)</span>
                 <div id="ai-button-spinner" class="spinner hidden"></div>
             </button>
-
-            <!-- Pestañas -->
             <div class="border-b border-gray-700 mb-4">
                 <nav class="flex -mb-px space-x-4" aria-label="Tabs">
-                    <button class="tab-button active" data-tab="tab-summary">
-                        Minuta
-                    </button>
-                    <button class="tab-button" data-tab="tab-transcript">
-                        Transcripción
-                    </button>
-                    <button class="tab-button" data-tab="tab-details">
-                        Detalles
-                    </button>
+                    <button class="tab-button active" data-tab="tab-summary">Minuta</button>
+                    <button class="tab-button" data-tab="tab-transcript">Transcripción</button>
+                    <button class="tab-button" data-tab="tab-details">Detalles</button>
                 </nav>
             </div>
-
-            <!-- Contenido de Pestañas -->
             <div>
-                <!-- Pestaña Minuta (IA) -->
                 <div id="tab-summary" class="tab-content space-y-4">
                     <div id="summary-empty-state" class="text-center py-6 text-gray-500">
                         <p>Aún no se ha generado ninguna minuta.</p>
                         <p class="text-sm">Usa el botón de IA para crear una.</p>
                     </div>
-                    <div id="summary-content" class="hidden">
-                        <!-- La minuta generada por IA se insertará aquí -->
-                    </div>
+                    <div id="summary-content" class="hidden"></div>
                 </div>
-
-                <!-- Pestaña Transcripción -->
                 <div id="tab-transcript" class="tab-content hidden space-y-4">
-                    <textarea id="transcript-editor" class="w-full h-64 bg-gray-800 border border-gray-700 rounded-lg p-3 text-gray-200 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="La transcripción aparecerá aquí... (o puedes editarla manualmente)"></textarea>
-                    <button id="save-transcript-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
-                        Guardar Cambios
-                    </button>
+                    <textarea id="transcript-editor" class="w-full h-64 bg-gray-800 border border-gray-700 rounded-lg p-3 text-gray-200 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="La transcripción aparecerá aquí..."></textarea>
+                    <button id="save-transcript-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">Guardar Cambios</button>
                 </div>
-                
-                <!-- Pestaña Detalles -->
                 <div id="tab-details" class="tab-content hidden space-y-3">
-                    <div class="bg-gray-800 p-3 rounded-lg">
-                        <p class="text-sm text-gray-400">Fecha</p>
-                        <p id="detail-date" class="text-md"></p>
-                    </div>
-                    <div class="bg-gray-800 p-3 rounded-lg">
-                        <p class="text-sm text-gray-400">Duración</p>
-                        <p id="detail-duration" class="text-md"></p>
-                    </div>
-                    <div class="bg-gray-800 p-3 rounded-lg">
-                        <p class="text-sm text-gray-400">Estado</p>
-                        <p id="detail-status" class="text-md"></p>
-                    </div>
+                    <div class="bg-gray-800 p-3 rounded-lg"><p class="text-sm text-gray-400">Fecha</p><p id="detail-date" class="text-md"></p></div>
+                    <div class="bg-gray-800 p-3 rounded-lg"><p class="text-sm text-gray-400">Duración</p><p id="detail-duration" class="text-md"></p></div>
+                    <div class="bg-gray-800 p-3 rounded-lg"><p class="text-sm text-gray-400">Estado</p><p id="detail-status" class="text-md"></p></div>
                 </div>
             </div>
         </div>
@@ -235,38 +183,24 @@
     <!-- ===== Barra de Navegación Inferior ===== -->
     <nav class="flex justify-around items-center bg-gray-900 border-t border-gray-700 shadow-lg sticky bottom-0 w-full" style="padding-bottom: env(safe-area-inset-bottom, 0);">
         <button class="nav-button active flex flex-col items-center justify-center p-3 w-full" data-page="record">
-            <!-- Icono Grabar -->
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm-2 4a5 5 0 004 4.9V16H7a1 1 0 100 2h6a1 1 0 100-2h-2v-3.1A5 5 0 0015 8V4a5 5 0 00-10 0v4z" clip-rule="evenodd" />
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm-2 4a5 5 0 004 4.9V16H7a1 1 0 100 2h6a1 1 0 100-2h-2v-3.1A5 5 0 0015 8V4a5 5 0 00-10 0v4z" clip-rule="evenodd" /></svg>
             <span class="text-xs font-medium mt-1">Grabar</span>
         </button>
         <button class="nav-button flex flex-col items-center justify-center p-3 w-full" data-page="history">
-            <!-- Icono Historial -->
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" /></svg>
             <span class="text-xs font-medium mt-1">Historial</span>
         </button>
         <button class="nav-button flex flex-col items-center justify-center p-3 w-full" data-page="dashboard">
-            <!-- Icono Dashboard -->
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M2.5 3A1.5 1.5 0 0 0 1 4.5v11A1.5 1.5 0 0 0 2.5 17h15a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 17.5 3h-15ZM3 7.5h14v8H3v-8Zm1.5-1.5a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1h-3ZM9 6a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 9 6Zm2 0a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 11 6Zm2 0a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 13 6Zm2 0a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 15 6Z" clip-rule="evenodd" />
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M2.5 3A1.5 1.5 0 0 0 1 4.5v11A1.5 1.5 0 0 0 2.5 17h15a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 17.5 3h-15ZM3 7.5h14v8H3v-8Zm1.5-1.5a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1h-3ZM9 6a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 9 6Zm2 0a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 11 6Zm2 0a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 13 6Zm2 0a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 15 6Z" clip-rule="evenodd" /></svg>
             <span class="text-xs font-medium mt-1">Dashboard</span>
         </button>
         <button class="nav-button flex flex-col items-center justify-center p-3 w-full" data-page="profile">
-            <!-- Icono Perfil -->
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.91A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.09A5 5 0 0010 11z" clip-rule="evenodd" />
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.91A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.09A5 5 0 0010 11z" clip-rule="evenodd" /></svg>
             <span class="text-xs font-medium mt-1">Perfil</span>
         </button>
     </nav>
     
     <!-- ===== Modales (Ocultos) ===== -->
-
-    <!-- Modal para Guardar Grabación -->
     <div id="save-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-30 p-6 hidden modal-backdrop">
         <div class="bg-gray-800 w-full max-w-md p-6 rounded-lg shadow-xl modal-content">
             <h2 class="text-xl font-semibold mb-4">Guardar Grabación</h2>
@@ -276,25 +210,17 @@
                 <input type="text" id="meeting-title-input" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-2.5 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="Ej: Reunión de Sincronización">
             </div>
             <div class="flex justify-end space-x-3 mt-6">
-                <button id="discard-button" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white font-medium transition-colors">
-                    Descartar
-                </button>
-                <button id="save-button" class="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-white font-bold transition-colors">
-                    Guardar
-                </button>
+                <button id="discard-button" class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white font-medium transition-colors">Descartar</button>
+                <button id="save-button" class="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-white font-bold transition-colors">Guardar</button>
             </div>
         </div>
     </div>
-    
-    <!-- Modal de Alerta Genérico -->
     <div id="alert-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40 p-6 hidden modal-backdrop">
         <div class="bg-gray-800 w-full max-w-sm p-6 rounded-lg shadow-xl modal-content">
             <h2 id="alert-title" class="text-xl font-semibold mb-3"></h2>
-            <p id="alert-message" class_message="text-gray-300 mb-5"></p>
+            <p id="alert-message" class="text-gray-300 mb-5"></p>
             <div class="flex justify-end">
-                <button id="alert-ok-button" class="px-5 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-white font-bold transition-colors">
-                    Entendido
-                </button>
+                <button id="alert-ok-button" class="px-5 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-white font-bold transition-colors">Entendido</button>
             </div>
         </div>
     </div>
