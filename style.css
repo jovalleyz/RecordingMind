@@ -1,95 +1,174 @@
-[data-page] { display: none; }
-[data-page="record"].active { display: flex; }
-[data-page="history"].active { display: block; }
-[data-page="dashboard"].active { display: block; }
-[data-page="profile"].active { display: block; }
+/* Importación de Tailwind (CDN) - Esto se incluirá en el index.html */
+/* Este archivo es para los estilos personalizados */
 
-/* Estilo de los botones de navegación */
-.nav-button {
-    color: #9ca3af; /* gray-400 */
-    transition: all 0.2s ease-in-out;
-}
-.nav-button.active {
-    color: #06b6d4; /* cyan-500 */
-    background-color: #1f2937; /* gray-800 */
-}
-.nav-button:hover:not(.active) {
-    color: #e5e7eb; /* gray-200 */
-}
-
-/* Ocultar scrollbars */
-.no-scrollbar::-webkit-scrollbar {
+/* Ocultar la barra de scroll */
+body::-webkit-scrollbar {
     display: none;
 }
-.no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+body {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
 }
 
-/* Animación de grabación */
+/* Estilos para el botón de navegación activo */
+.nav-button.active {
+    color: #06b6d4; /* Color cian-500 de Tailwind */
+}
+
+/* Animación de pulsación para el botón de grabación */
 @keyframes pulse-ring {
     0% {
-        transform: scale(.33);
-        opacity: 0.8;
+        transform: scale(0.8);
+        opacity: 1;
     }
     80%, 100% {
+        transform: scale(1.8);
         opacity: 0;
     }
 }
+
 @keyframes pulse-dot {
     0% {
-        transform: scale(0.8);
-    }
-    50% {
         transform: scale(1);
     }
+    50% {
+        transform: scale(1.1);
+    }
     100% {
-        transform: scale(0.8);
+        transform: scale(1);
     }
 }
+
 .pulse-ring {
-    animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
+
 .pulse-dot {
-    animation: pulse-dot 1s cubic-bezier(0.455, 0.03, 0.515, 0.955) -0.4s infinite;
+    animation: pulse-dot 1.5s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
 }
 
-/* Checkbox toggle */
-input:checked ~ .dot {
-    transform: translateX(100%);
-    background-color: #06b6d4;
+/* Estilos para el visualizador de audio */
+#audio-visualizer {
+    width: 100%;
+    height: 80px;
+    background-color: transparent;
 }
 
-/* Modal */
+/* Estilos para el modal */
 .modal-backdrop {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background-color: rgba(0, 0, 0, 0.75);
-    z-index: 40;
+    transition: opacity 0.3s ease-in-out;
 }
-.modal {
-    display: none;
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 50;
-    width: 90%;
-    max-width: 400px;
-}
-.modal.active, .modal-backdrop.active {
-    display: block;
+.modal-content {
+    transition: transform 0.3s ease-in-out;
 }
 
-/* Pestañas del Modal */
-.modal-tab-button.active {
+/* Estilos para la pestaña de detalle de reunión */
+.tab-button.active {
+    border-color: #06b6d4;
+    color: #06b6d4;
+}
+
+/* Estilos para el editor de transcripción */
+#transcript-editor {
+    min-height: 200px;
+    background-color: #374151; /* gray-700 */
+    border: 1px solid #4b5563; /* gray-600 */
+    border-radius: 8px;
+    padding: 12px;
+    color: #f3f4f6; /* gray-100 */
+    font-family: 'Inter', sans-serif;
+    line-height: 1.6;
+}
+#transcript-editor:focus {
+    outline: none;
     border-color: #06b6d4; /* cyan-500 */
-    color: #22d3ee; /* cyan-400 */
+    box-shadow: 0 0 0 2px #06b6d4;
 }
-.modal-tab-content {
-    display: none;
+
+/* Estilo para los checkboxes personalizados */
+.custom-checkbox {
+    appearance: none;
+    background-color: #4b5563; /* gray-600 */
+    border: 1px solid #6b7280; /* gray-500 */
+    border-radius: 4px;
+    width: 20px;
+    height: 20px;
+    display: inline-block;
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
 }
-.modal-tab-content.active {
-    display: block;
+
+.custom-checkbox:checked {
+    background-color: #06b6d4; /* cyan-500 */
+    border-color: #06b6d4;
+}
+
+/* El "chulito" (check mark) */
+.custom-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 3px 3px 0;
+    transform: rotate(45deg);
+}
+
+/* Checkbox de consentimiento */
+.consent-checkbox {
+    appearance: none;
+    background-color: #374151; /* gray-700 */
+    border: 1px solid #6b7280; /* gray-500 */
+    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    display: inline-block;
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
+.consent-checkbox:checked {
+    background-color: #06b6d4; /* cyan-500 */
+    border-color: #06b6d4;
+}
+
+.consent-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 4px;
+    width: 6px;
+    height: 12px;
+    border: solid white;
+    border-width: 0 3px 3px 0;
+    transform: rotate(45deg);
+}
+
+/* Spinner de carga */
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+/* Efecto de desvanecimiento para texto */
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.fade-in {
+    animation: fade-in 0.5s ease-in-out;
 }
